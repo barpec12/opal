@@ -1,7 +1,4 @@
-package org.opalj.fpcf.fixtures.taint;
-
-
-import org.opalj.fpcf.properties.taint.ForwardFlowPath;
+package js;
 
 import javax.script.Invocable;
 import javax.script.ScriptEngine;
@@ -13,9 +10,8 @@ public class TaintJSJavaTestClass {
 
     private int instanceField;
 
-    @ForwardFlowPath({"jjjFlow"})
-    public void jjjFlow() throws ScriptException {
-
+    public static void main (String[] args) throws ScriptException
+    {
         ScriptEngineManager sem = new ScriptEngineManager();
         ScriptEngine se = sem.getEngineByName("JavaScript");
         try {
@@ -47,5 +43,5 @@ public class TaintJSJavaTestClass {
     }
     private static void sink(boolean i) {
     System.out.println(i);
-}
+    }
 }

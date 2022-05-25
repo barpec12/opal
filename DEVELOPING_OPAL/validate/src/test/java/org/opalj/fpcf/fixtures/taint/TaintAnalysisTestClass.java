@@ -301,6 +301,13 @@ public class TaintAnalysisTestClass {
         sink(wrapper.field + 1);
     }
 
+    @ForwardFlowPath({"isJDKConsidered"})
+    @BackwardFlowPath({"isJDKConsidered", "sink"})
+    public void isJDKConsidered() {
+        StringBuilder sb = new StringBuilder(source());
+        sink(sb.toString());
+    }
+
     //TODO Tests für statische Felder über Methodengrenzen
 
     //Does not work, because we do not know which exceptions cannot be thrown.
@@ -383,7 +390,9 @@ public class TaintAnalysisTestClass {
     private static void sink(int i) {
         System.out.println(i);
     }
-
+    private static void sink(String s) {
+        System.out.println(s);
+    }
 }
 
 abstract class A {

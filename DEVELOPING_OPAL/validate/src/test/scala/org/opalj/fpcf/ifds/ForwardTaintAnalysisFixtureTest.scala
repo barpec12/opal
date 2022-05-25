@@ -16,6 +16,7 @@ import java.net.URL
  * @author Mario Trageser
  */
 class ForwardTaintAnalysisFixtureTest extends PropertiesTest {
+    override def withRT = true
 
     override def init(p: Project[URL]): Unit = {
         p.updateProjectInformationKeyInitializationData(

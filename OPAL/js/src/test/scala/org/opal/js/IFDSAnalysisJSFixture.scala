@@ -54,7 +54,7 @@ class IFDSAnalysisJSProblemFixture(p: SomeProject) extends IFDSAnalysisJS(p) {
      */
     override protected def createFlowFact(callee: Method, call: JavaStatement,
                                           in: Fact): Option[FlowFact] =
-        if (callee.name == "sink" && in == Variable(-2)) Some(FlowFact(Seq(JavaMethod(call.method))))
+        if (callee.name == "sink") Some(FlowFact(Seq(JavaMethod(call.method))))
         else None
 }
 

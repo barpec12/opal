@@ -1,4 +1,4 @@
-package org.opalj.js.fixtures;
+package org.opalj.fpcf.fixtures.js;
 
 import org.opalj.fpcf.properties.taint.ForwardFlowPath;
 
@@ -42,6 +42,9 @@ public class Java2JsTestClass {
     private static int sanitize(int i) {return i;}
 
     private static void sink(int i) {
+        System.out.println(i);
+    }
+    private static void sink(String i) {
         System.out.println(i);
     }
     private static void sink(boolean i) {

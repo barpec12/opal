@@ -26,7 +26,7 @@ class IFDSAnalysisJSProblemFixture(p: SomeProject) extends IFDSAnalysisJS(p) {
      * The analysis starts with all public methods in TaintAnalysisTestClass.
      */
     override val entryPoints: Seq[(Method, Fact)] = p.allProjectClassFiles.filter(classFile ⇒
-        classFile.thisType.fqn == "org/opalj/js/fixtures/Java2JsTestClass")
+        classFile.thisType.fqn == "org/opalj/fpcf/fixtures/js/Java2JsTestClass")
         .flatMap(classFile ⇒ classFile.methods)
         .filter(method ⇒ method.isPublic && outsideAnalysisContext(method).isEmpty)
         .map(method ⇒ method → NullFact)

@@ -13,6 +13,9 @@ import org.opalj.tac.fpcf.analyses.ifds.taint.NullFact
 import java.net.URL
 
 class IFDSAnalysisJSFixtureTest extends PropertiesTest {
+    override def fixtureProjectPackage: List[String] = List(
+        "org/opalj/fpcf/fixtures/js"
+    )
     override def withRT = true
 
     override def init(p: Project[URL]): Unit = {

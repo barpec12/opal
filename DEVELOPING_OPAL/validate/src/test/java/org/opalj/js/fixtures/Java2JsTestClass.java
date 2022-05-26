@@ -1,16 +1,19 @@
-package js;
+package org.opalj.js.fixtures;
+
+import org.opalj.fpcf.properties.taint.ForwardFlowPath;
 
 import javax.script.Invocable;
 import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
 
-public class TaintJSJavaTestClass {
+public class Java2JsTestClass {
     private static int staticField;
 
     private int instanceField;
 
-    public static void main (String[] args) throws ScriptException
+    @ForwardFlowPath({"simpleScriptEngine"})
+    public static void simpleScriptEngine() throws ScriptException
     {
         ScriptEngineManager sem = new ScriptEngineManager();
         ScriptEngine se = sem.getEngineByName("JavaScript");
@@ -42,6 +45,6 @@ public class TaintJSJavaTestClass {
         System.out.println(i);
     }
     private static void sink(boolean i) {
-    System.out.println(i);
+        System.out.println(i);
     }
 }

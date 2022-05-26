@@ -13,299 +13,292 @@ public class TaintAnalysisTestClass {
 
     private int instanceField;
 
-//    @ForwardFlowPath({"callChainsAreConsidered", "passToSink"})
-//    @BackwardFlowPath({"callChainsAreConsidered", "passToSink", "sink"})
-//    public void callChainsAreConsidered() {
-//        passToSink(source());
-//    }
-//
-//    @ForwardFlowPath({"returnEdgesFromInstanceMethodsArePresent"})
-//    @BackwardFlowPath({"returnEdgesFromInstanceMethodsArePresent", "sink"})
-//    public void returnEdgesFromInstanceMethodsArePresent() {
-//        sink(callSourcePublic());
-//    }
-//
-//    @ForwardFlowPath({"returnEdgesFromPrivateMethodsArePresent"})
-//    @BackwardFlowPath({"returnEdgesFromPrivateMethodsArePresent", "sink"})
-//    public void returnEdgesFromPrivateMethodsArePresent() {
-//        sink(callSourceNonStatic());
-//    }
-//
-//    @ForwardFlowPath({"multiplePathsAreConsidered_1", "indirectPassToSink", "passToSink"})
-//    @BackwardFlowPath({"multiplePathsAreConsidered_1", "indirectPassToSink", "passToSink", "sink"})
-//    public void multiplePathsAreConsidered_1() {
-//        int i = source();
-//        passToSink(i);
-//        indirectPassToSink(i);
-//    }
-//
-//    @ForwardFlowPath({"multiplePathsAreConsidered_2", "passToSink"})
-//    @BackwardFlowPath({"multiplePathsAreConsidered_2", "passToSink", "sink"})
-//    public void multiplePathsAreConsidered_2() {
-//        int i = source();
-//        passToSink(i);
-//        indirectPassToSink(i);
-//    }
-//
-//    @ForwardFlowPath({"ifEdgesAreConsidered"})
-//    @BackwardFlowPath({"ifEdgesAreConsidered", "sink"})
-//    public void ifEdgesAreConsidered() {
-//        int i;
-//        if(Math.random() < .5) {
-//            i = source();
-//        } else {
-//            i = 0;
-//        }
-//        sink(i);
-//    }
-//
-//    @ForwardFlowPath({"elseEdgesAreConsidered"})
-//    @BackwardFlowPath({"elseEdgesAreConsidered", "sink"})
-//    public void elseEdgesAreConsidered() {
-//        int i;
-//        if(Math.random() < .5) {
-//            i = 0;
-//        } else {
-//            i = source();
-//        }
-//        sink(i);
-//    }
-//
-//    @ForwardFlowPath({"forLoopsAreConsidered"})
-//    @BackwardFlowPath({"forLoopsAreConsidered", "sink"})
-//    public void forLoopsAreConsidered() {
-//        int[] arr = new int[2];
-//        for(int i = 0; i < arr.length; i++) {
-//            sink(arr[0]);
-//            arr[i] = source();
-//        }
-//    }
-//
-//    @ForwardFlowPath("returnOfIdentityFunctionIsConsidered")
-//    @BackwardFlowPath({"returnOfIdentityFunctionIsConsidered", "sink"})
-//    public void returnOfIdentityFunctionIsConsidered() {
-//        sink(identity(source()));
-//    }
-//
-//    @ForwardFlowPath({"summaryEdgesOfRecursiveFunctionsAreComputedCorrectly"})
-//    @BackwardFlowPath({"summaryEdgesOfRecursiveFunctionsAreComputedCorrectly", "sink"})
-//    public void summaryEdgesOfRecursiveFunctionsAreComputedCorrectly() {
-//        sink(recursion(0));
-//    }
-//
-//    public int recursion(int i) {
-//        return i == 0 ? recursion(source()) : i;
-//    }
-//
-//    @ForwardFlowPath({"codeInCatchNodesIsConsidered"})
-//    @BackwardFlowPath({"codeInCatchNodesIsConsidered", "sink"})
-//    public void codeInCatchNodesIsConsidered() {
-//        int i = source();
-//        try {
-//            throw new RuntimeException();
-//        } catch(RuntimeException e) {
-//            sink(i);
-//        }
-//    }
-//
-//    @ForwardFlowPath({"codeInFinallyNodesIsConsidered"})
-//    @BackwardFlowPath({"codeInFinallyNodesIsConsidered", "sink"})
-//    public void codeInFinallyNodesIsConsidered() {
-//        int i = 1;
-//        try {
-//            throw new RuntimeException();
-//        } catch(RuntimeException e) {
-//            i = source();
-//        } finally {
-//            sink(i);
-//        }
-//    }
-//
-//    @ForwardFlowPath({"unaryExpressionsPropagateTaints"})
-//    @BackwardFlowPath({"unaryExpressionsPropagateTaints", "sink"})
-//    public void unaryExpressionsPropagateTaints() {
-//        sink(-source());
-//    }
-//
-//    @ForwardFlowPath({"binaryExpressionsPropagateTaints"})
-//    @BackwardFlowPath({"binaryExpressionsPropagateTaints", "sink"})
-//    public void binaryExpressionsPropagateTaints() {
-//        sink(source() + 1);
-//    }
-//
-//    @ForwardFlowPath({"arrayLengthPropagatesTaints"})
-//    @BackwardFlowPath({"arrayLengthPropagatesTaints", "sink"})
-//    public void arrayLengthPropagatesTaints() {
-//        sink(new Object[source()].length);
-//    }
-//
-//    @ForwardFlowPath({"singleArrayIndicesAreTainted_1"})
-//    @BackwardFlowPath({"singleArrayIndicesAreTainted_1", "sink"})
-//    public void singleArrayIndicesAreTainted_1() {
-//        int[] arr = new int[2];
-//        arr[0] = source();
-//        sink(arr[0]);
-//    }
-//
-//    @ForwardFlowPath({})
-//    @BackwardFlowPath({})
-//    public void singleArrayIndicesAreTainted_2() {
-//        int[] arr = new int[2];
-//        arr[0] = source();
-//        sink(arr[1]);
-//    }
-//
-//    @ForwardFlowPath({"wholeArrayTaintedIfIndexUnknown"})
-//    @BackwardFlowPath({"wholeArrayTaintedIfIndexUnknown", "sink"})
-//    public void wholeArrayTaintedIfIndexUnknown() {
-//        int[] arr = new int[2];
-//        arr[(int) (Math.random() * 2)] = source();
-//        sink(arr[0]);
-//    }
-//
-//    @ForwardFlowPath({"arrayElementTaintsArePropagatedToCallee_1", "passFirstArrayElementToSink"})
-//    @BackwardFlowPath({"arrayElementTaintsArePropagatedToCallee_1", "passFirstArrayElementToSink",
-//            "sink"})
-//    public void arrayElementTaintsArePropagatedToCallee_1() {
-//        int[] arr = new int[2];
-//        arr[0] = source();
-//        passFirstArrayElementToSink(arr);
-//    }
-//
-//    @ForwardFlowPath({})
-//    @BackwardFlowPath({})
-//    public void arrayElementTaintsArePropagatedToCallee_2() {
-//        int[] arr = new int[2];
-//        arr[1] = source();
-//        passFirstArrayElementToSink(arr);
-//    }
-//
-//    @ForwardFlowPath({"arrayElementTaintsArePropagatedBack_1", "passFirstArrayElementToSink"})
-//    @BackwardFlowPath({"arrayElementTaintsArePropagatedBack_1", "passFirstArrayElementToSink",
-//            "sink"})
-//    public void arrayElementTaintsArePropagatedBack_1() {
-//        int[] arr = new int[2];
-//        taintRandomElement(arr);
-//        passFirstArrayElementToSink(arr);
-//    }
-//
-//    @ForwardFlowPath({})
-//    @BackwardFlowPath({})
-//    public void arrayElementTaintsArePropagatedBack_2() {
-//        int[] arr = new int[2];
-//        taintFirstElement(arr);
-//        sink(arr[1]);
-//    }
-//
-//    @ForwardFlowPath({"callerParameterIsTaintedIfCalleeTaintsFormalParameter",
-//            "passFirstArrayElementToSink"})
-//    @BackwardFlowPath({"callerParameterIsTaintedIfCalleeTaintsFormalParameter",
-//            "passFirstArrayElementToSink", "sink"})
-//    public void callerParameterIsTaintedIfCalleeTaintsFormalParameter() {
-//        int[] arr = new int[2];
-//        taintRandomElement(arr);
-//        passFirstArrayElementToSink(arr);
-//    }
-//
-//    @ForwardFlowPath({})
-//    @BackwardFlowPath({})
-//    public void taintDisappearsWhenReassigning() {
-//        int[] arr = new int[2];
-//        arr[0] = source();
-//        arr[0] = 0;
-//        sink(arr[0]);
-//    }
-//
-//    @ForwardFlowPath({})
-//    @BackwardFlowPath({})
-//    public void nativeMethodsCanBeHandeled() {
-//        int j = nativeMethod(0);
-//        sink(j);
-//    }
-//
-//    @ForwardFlowPath({"returnValueOfNativeMethodIsTainted"})
-//    @BackwardFlowPath({"returnValueOfNativeMethodIsTainted", "sink"})
-//    public void returnValueOfNativeMethodIsTainted() {
-//        sink(nativeMethod(source()));
-//    }
-//
-//    @ForwardFlowPath({"analysisUsesCallGraph_1"})
-//    @BackwardFlowPath({"analysisUsesCallGraph_1", "sink"})
-//    public void analysisUsesCallGraph_1() {
-//        A a = new B();
-//        sink(a.get());
-//    }
-//
-//    @ForwardFlowPath({})
-//    @BackwardFlowPath({})
-//    public void analysisUsesCallGraph_2() {
-//        A a = new C();
-//        sink(a.get());
-//    }
-//
-//    @ForwardFlowPath({"analysisUsesCallGraph_3"})
-//    @BackwardFlowPath({"analysisUsesCallGraph_3", "sink"})
-//    public void analysisUsesCallGraph_3() {
-//        A a;
-//        if(Math.random() < .5)
-//            a = new B();
-//        else
-//            a = new C();
-//        sink(a.get());
-//    }
-//
-//    @ForwardFlowPath({})
-//    @BackwardFlowPath({})
-//    public void sanitizeRemovesTaint() {
-//        sink(sanitize(source()));
-//    }
-//
-//    @ForwardFlowPath({"instanceFieldsAreTainted"})
-//    @BackwardFlowPath({"instanceFieldsAreTainted", "sink"})
-//    public void instanceFieldsAreTainted() {
-//        instanceField = source();
-//        sink(instanceField);
-//    }
-//
-//    @ForwardFlowPath({"staticFieldsAreTainted"})
-//    @BackwardFlowPath({"staticFieldsAreTainted", "sink"})
-//    public void staticFieldsAreTainted() {
-//        staticField = source();
-//        sink(staticField);
-//    }
-//
-//    @ForwardFlowPath({"fieldTaintsArePassed", "passWrappedValueToSink"})
-//    @BackwardFlowPath({"fieldTaintsArePassed", "passWrappedValueToSink", "sink"})
-//    public void fieldTaintsArePassed() {
-//        passWrappedValueToSink(new Wrapper(source()));
-//    }
-//
-//    @ForwardFlowPath({"fieldTaintsAreAppliedInReturnFlow"})
-//    @BackwardFlowPath({"fieldTaintsAreAppliedInReturnFlow", "sink"})
-//    public void fieldTaintsAreAppliedInReturnFlow() {
-//        sink(createTaintedWrapper().field);
-//    }
-//
-//    @ForwardFlowPath({"fieldTaintsOfParametersAreAppliedInReturnFlow"})
-//    @BackwardFlowPath({"fieldTaintsOfParametersAreAppliedInReturnFlow", "sink"})
-//    public void fieldTaintsOfParametersAreAppliedInReturnFlow() {
-//        Wrapper wrapper = new Wrapper();
-//        taintWrappedValue(wrapper);
-//        sink(wrapper.field);
-//    }
-//
-//    @ForwardFlowPath({"fieldTaintsAreConsideredInComputations"})
-//    @BackwardFlowPath({"fieldTaintsAreConsideredInComputations", "sink"})
-//    public void fieldTaintsAreConsideredInComputations() {
-//        Wrapper wrapper = new Wrapper(source());
-//        sink(wrapper.field + 1);
-//    }
+    @ForwardFlowPath({"callChainsAreConsidered", "passToSink"})
+    @BackwardFlowPath({"callChainsAreConsidered", "passToSink", "sink"})
+    public void callChainsAreConsidered() {
+        passToSink(source());
+    }
 
-    @ForwardFlowPath({"isJDKConsidered"})
-    @BackwardFlowPath({"isJDKConsidered", "sink"})
-    public void isJDKConsidered() {
-        StringBuilder sb = new StringBuilder(source());
-        sink(sb.toString());
+    @ForwardFlowPath({"returnEdgesFromInstanceMethodsArePresent"})
+    @BackwardFlowPath({"returnEdgesFromInstanceMethodsArePresent", "sink"})
+    public void returnEdgesFromInstanceMethodsArePresent() {
+        sink(callSourcePublic());
+    }
+
+    @ForwardFlowPath({"returnEdgesFromPrivateMethodsArePresent"})
+    @BackwardFlowPath({"returnEdgesFromPrivateMethodsArePresent", "sink"})
+    public void returnEdgesFromPrivateMethodsArePresent() {
+        sink(callSourceNonStatic());
+    }
+
+    @ForwardFlowPath({"multiplePathsAreConsidered_1", "indirectPassToSink", "passToSink"})
+    @BackwardFlowPath({"multiplePathsAreConsidered_1", "indirectPassToSink", "passToSink", "sink"})
+    public void multiplePathsAreConsidered_1() {
+        int i = source();
+        passToSink(i);
+        indirectPassToSink(i);
+    }
+
+    @ForwardFlowPath({"multiplePathsAreConsidered_2", "passToSink"})
+    @BackwardFlowPath({"multiplePathsAreConsidered_2", "passToSink", "sink"})
+    public void multiplePathsAreConsidered_2() {
+        int i = source();
+        passToSink(i);
+        indirectPassToSink(i);
+    }
+
+    @ForwardFlowPath({"ifEdgesAreConsidered"})
+    @BackwardFlowPath({"ifEdgesAreConsidered", "sink"})
+    public void ifEdgesAreConsidered() {
+        int i;
+        if(Math.random() < .5) {
+            i = source();
+        } else {
+            i = 0;
+        }
+        sink(i);
+    }
+
+    @ForwardFlowPath({"elseEdgesAreConsidered"})
+    @BackwardFlowPath({"elseEdgesAreConsidered", "sink"})
+    public void elseEdgesAreConsidered() {
+        int i;
+        if(Math.random() < .5) {
+            i = 0;
+        } else {
+            i = source();
+        }
+        sink(i);
+    }
+
+    @ForwardFlowPath({"forLoopsAreConsidered"})
+    @BackwardFlowPath({"forLoopsAreConsidered", "sink"})
+    public void forLoopsAreConsidered() {
+        int[] arr = new int[2];
+        for(int i = 0; i < arr.length; i++) {
+            sink(arr[0]);
+            arr[i] = source();
+        }
+    }
+
+    @ForwardFlowPath("returnOfIdentityFunctionIsConsidered")
+    @BackwardFlowPath({"returnOfIdentityFunctionIsConsidered", "sink"})
+    public void returnOfIdentityFunctionIsConsidered() {
+        sink(identity(source()));
+    }
+
+    @ForwardFlowPath({"summaryEdgesOfRecursiveFunctionsAreComputedCorrectly"})
+    @BackwardFlowPath({"summaryEdgesOfRecursiveFunctionsAreComputedCorrectly", "sink"})
+    public void summaryEdgesOfRecursiveFunctionsAreComputedCorrectly() {
+        sink(recursion(0));
+    }
+
+    public int recursion(int i) {
+        return i == 0 ? recursion(source()) : i;
+    }
+
+    @ForwardFlowPath({"codeInCatchNodesIsConsidered"})
+    @BackwardFlowPath({"codeInCatchNodesIsConsidered", "sink"})
+    public void codeInCatchNodesIsConsidered() {
+        int i = source();
+        try {
+            throw new RuntimeException();
+        } catch(RuntimeException e) {
+            sink(i);
+        }
+    }
+
+    @ForwardFlowPath({"codeInFinallyNodesIsConsidered"})
+    @BackwardFlowPath({"codeInFinallyNodesIsConsidered", "sink"})
+    public void codeInFinallyNodesIsConsidered() {
+        int i = 1;
+        try {
+            throw new RuntimeException();
+        } catch(RuntimeException e) {
+            i = source();
+        } finally {
+            sink(i);
+        }
+    }
+
+    @ForwardFlowPath({"unaryExpressionsPropagateTaints"})
+    @BackwardFlowPath({"unaryExpressionsPropagateTaints", "sink"})
+    public void unaryExpressionsPropagateTaints() {
+        sink(-source());
+    }
+
+    @ForwardFlowPath({"binaryExpressionsPropagateTaints"})
+    @BackwardFlowPath({"binaryExpressionsPropagateTaints", "sink"})
+    public void binaryExpressionsPropagateTaints() {
+        sink(source() + 1);
+    }
+
+    @ForwardFlowPath({"arrayLengthPropagatesTaints"})
+    @BackwardFlowPath({"arrayLengthPropagatesTaints", "sink"})
+    public void arrayLengthPropagatesTaints() {
+        sink(new Object[source()].length);
+    }
+
+    @ForwardFlowPath({"singleArrayIndicesAreTainted_1"})
+    @BackwardFlowPath({"singleArrayIndicesAreTainted_1", "sink"})
+    public void singleArrayIndicesAreTainted_1() {
+        int[] arr = new int[2];
+        arr[0] = source();
+        sink(arr[0]);
+    }
+
+    @ForwardFlowPath({})
+    @BackwardFlowPath({})
+    public void singleArrayIndicesAreTainted_2() {
+        int[] arr = new int[2];
+        arr[0] = source();
+        sink(arr[1]);
+    }
+
+    @ForwardFlowPath({"wholeArrayTaintedIfIndexUnknown"})
+    @BackwardFlowPath({"wholeArrayTaintedIfIndexUnknown", "sink"})
+    public void wholeArrayTaintedIfIndexUnknown() {
+        int[] arr = new int[2];
+        arr[(int) (Math.random() * 2)] = source();
+        sink(arr[0]);
+    }
+
+    @ForwardFlowPath({"arrayElementTaintsArePropagatedToCallee_1", "passFirstArrayElementToSink"})
+    @BackwardFlowPath({"arrayElementTaintsArePropagatedToCallee_1", "passFirstArrayElementToSink",
+            "sink"})
+    public void arrayElementTaintsArePropagatedToCallee_1() {
+        int[] arr = new int[2];
+        arr[0] = source();
+        passFirstArrayElementToSink(arr);
+    }
+
+    @ForwardFlowPath({})
+    @BackwardFlowPath({})
+    public void arrayElementTaintsArePropagatedToCallee_2() {
+        int[] arr = new int[2];
+        arr[1] = source();
+        passFirstArrayElementToSink(arr);
+    }
+
+    @ForwardFlowPath({"arrayElementTaintsArePropagatedBack_1", "passFirstArrayElementToSink"})
+    @BackwardFlowPath({"arrayElementTaintsArePropagatedBack_1", "passFirstArrayElementToSink",
+            "sink"})
+    public void arrayElementTaintsArePropagatedBack_1() {
+        int[] arr = new int[2];
+        taintRandomElement(arr);
+        passFirstArrayElementToSink(arr);
+    }
+
+    @ForwardFlowPath({})
+    @BackwardFlowPath({})
+    public void arrayElementTaintsArePropagatedBack_2() {
+        int[] arr = new int[2];
+        taintFirstElement(arr);
+        sink(arr[1]);
+    }
+
+    @ForwardFlowPath({"callerParameterIsTaintedIfCalleeTaintsFormalParameter",
+            "passFirstArrayElementToSink"})
+    @BackwardFlowPath({"callerParameterIsTaintedIfCalleeTaintsFormalParameter",
+            "passFirstArrayElementToSink", "sink"})
+    public void callerParameterIsTaintedIfCalleeTaintsFormalParameter() {
+        int[] arr = new int[2];
+        taintRandomElement(arr);
+        passFirstArrayElementToSink(arr);
+    }
+
+    @ForwardFlowPath({})
+    @BackwardFlowPath({})
+    public void taintDisappearsWhenReassigning() {
+        int[] arr = new int[2];
+        arr[0] = source();
+        arr[0] = 0;
+        sink(arr[0]);
+    }
+
+    @ForwardFlowPath({})
+    @BackwardFlowPath({})
+    public void nativeMethodsCanBeHandeled() {
+        int j = nativeMethod(0);
+        sink(j);
+    }
+
+    @ForwardFlowPath({"returnValueOfNativeMethodIsTainted"})
+    @BackwardFlowPath({"returnValueOfNativeMethodIsTainted", "sink"})
+    public void returnValueOfNativeMethodIsTainted() {
+        sink(nativeMethod(source()));
+    }
+
+    @ForwardFlowPath({"analysisUsesCallGraph_1"})
+    @BackwardFlowPath({"analysisUsesCallGraph_1", "sink"})
+    public void analysisUsesCallGraph_1() {
+        A a = new B();
+        sink(a.get());
+    }
+
+    @ForwardFlowPath({})
+    @BackwardFlowPath({})
+    public void analysisUsesCallGraph_2() {
+        A a = new C();
+        sink(a.get());
+    }
+
+    @ForwardFlowPath({"analysisUsesCallGraph_3"})
+    @BackwardFlowPath({"analysisUsesCallGraph_3", "sink"})
+    public void analysisUsesCallGraph_3() {
+        A a;
+        if(Math.random() < .5)
+            a = new B();
+        else
+            a = new C();
+        sink(a.get());
+    }
+
+    @ForwardFlowPath({})
+    @BackwardFlowPath({})
+    public void sanitizeRemovesTaint() {
+        sink(sanitize(source()));
+    }
+
+    @ForwardFlowPath({"instanceFieldsAreTainted"})
+    @BackwardFlowPath({"instanceFieldsAreTainted", "sink"})
+    public void instanceFieldsAreTainted() {
+        instanceField = source();
+        sink(instanceField);
+    }
+
+    @ForwardFlowPath({"staticFieldsAreTainted"})
+    @BackwardFlowPath({"staticFieldsAreTainted", "sink"})
+    public void staticFieldsAreTainted() {
+        staticField = source();
+        sink(staticField);
+    }
+
+    @ForwardFlowPath({"fieldTaintsArePassed", "passWrappedValueToSink"})
+    @BackwardFlowPath({"fieldTaintsArePassed", "passWrappedValueToSink", "sink"})
+    public void fieldTaintsArePassed() {
+        passWrappedValueToSink(new Wrapper(source()));
+    }
+
+    @ForwardFlowPath({"fieldTaintsAreAppliedInReturnFlow"})
+    @BackwardFlowPath({"fieldTaintsAreAppliedInReturnFlow", "sink"})
+    public void fieldTaintsAreAppliedInReturnFlow() {
+        sink(createTaintedWrapper().field);
+    }
+
+    @ForwardFlowPath({"fieldTaintsOfParametersAreAppliedInReturnFlow"})
+    @BackwardFlowPath({"fieldTaintsOfParametersAreAppliedInReturnFlow", "sink"})
+    public void fieldTaintsOfParametersAreAppliedInReturnFlow() {
+        Wrapper wrapper = new Wrapper();
+        taintWrappedValue(wrapper);
+        sink(wrapper.field);
+    }
+
+    @ForwardFlowPath({"fieldTaintsAreConsideredInComputations"})
+    @BackwardFlowPath({"fieldTaintsAreConsideredInComputations", "sink"})
+    public void fieldTaintsAreConsideredInComputations() {
+        Wrapper wrapper = new Wrapper(source());
+        sink(wrapper.field + 1);
     }
 
     //TODO Tests für statische Felder über Methodengrenzen

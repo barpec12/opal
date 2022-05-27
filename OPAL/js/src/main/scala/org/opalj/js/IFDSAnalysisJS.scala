@@ -6,7 +6,7 @@ import org.opalj.br.analyses.SomeProject
 import org.opalj.ifds.Dependees.Getter
 import org.opalj.tac.Assignment
 import org.opalj.tac.fpcf.analyses.ifds.{JavaMethod, JavaStatement}
-import org.opalj.tac.fpcf.analyses.ifds.taint.{ArrayElement, Fact, FlowFact, ForwardTaintProblem, NullFact, Variable}
+import org.opalj.tac.fpcf.analyses.ifds.taint.{ArrayElement, Fact, FlowFact, ForwardTaintProblem, InstanceField, NullFact, StaticField, Variable}
 
 class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
     /**
@@ -62,35 +62,74 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
      */
     override protected def sanitizesParameter(call: JavaStatement, in: Fact): Boolean = false
 
+    def defaultOutsideAnalysisContextHandler(call: JavaStatement, in: Fact) = {
+        val allParams = asCall(call.stmt).receiverOption ++ asCall(call.stmt).params
+        if (call.stmt.astID == Assignment.ASTID && (in match {
+            case Variable(index) ⇒
+                allParams.zipWithIndex.exists {
+                    case (param, _) if param.asVar.definedBy.contains(index) ⇒ true
+                    case _                                                   ⇒ false
+                }
+            case ArrayElement(index, _) ⇒
+                allParams.zipWithIndex.exists {
+                    case (param, _) if param.asVar.definedBy.contains(index) ⇒ true
+                    case _                                                   ⇒ false
+                }
+            case _ ⇒ false
+        })) Set(Variable(call.index))
+        else Set.empty
+    }
+
+    def matchCallArgument(call: JavaStatement, in: Fact): Set[Fact] = {
+        val callStmt = asCall(call.stmt)
+        val allParamsWithIndices = callStmt.allParams.zipWithIndex
+        in match {
+            // Taint formal parameter if actual parameter is tainted
+            case Variable(index) ⇒
+                allParamsWithIndices.flatMap {
+                    case (param, paramIndex) if param.asVar.definedBy.contains(index) ⇒
+                        Some(Variable(index)) // offset JNIEnv
+                    case _ ⇒ None // Nothing to do
+                }.toSet
+            // Taint element of formal parameter if element of actual parameter is tainted
+            case ArrayElement(index, taintedIndex) ⇒
+                allParamsWithIndices.flatMap {
+                    case (param, paramIndex) if param.asVar.definedBy.contains(index) ⇒
+                        Some(ArrayElement(index, taintedIndex)) // offset JNIEnv
+                    case _ ⇒ None // Nothing to do
+                }.toSet
+
+            case InstanceField(index, declaredClass, taintedField) ⇒
+                // Taint field of formal parameter if field of actual parameter is tainted
+                // Only if the formal parameter is of a type that may have that field!
+                allParamsWithIndices.flatMap {
+                    case (param, paramIndex) if param.asVar.definedBy.contains(index) ⇒
+                        Some(InstanceField(index, declaredClass, taintedField))
+                    case _ ⇒ None // Nothing to do
+                }.toSet
+            case StaticField(classType, fieldName) ⇒ Set.empty
+            case NullFact                          ⇒ Set.empty
+            case _                                 ⇒ Set.empty
+        }
+    }
+
+    def handleScriptCall(call: JavaStatement, successor: JavaStatement, in: Fact, dependeesGetter: Getter): Set[Fact] = {
+        val argSet = matchCallArgument(call, in)
+        argSet
+    }
+
+    def invokesScriptFunction(callee: Method): Boolean =
+        callee.classFile.fqn == "javax/script/Invocable" && callee.name == "invokeFunction"
+
     /**
      * If a parameter is tainted, the result will also be tainted.
      * We assume that the callee does not call the source method.
      */
     override def outsideAnalysisContext(callee: Method): Option[OutsideAnalysisContextHandler] = {
-        super.outsideAnalysisContext(callee) match {
-            case Some(_) ⇒ Some(((call: JavaStatement, successor: JavaStatement, in: Fact, _: Getter) ⇒ {
-                val baseObject = asCall(call.stmt).receiverOption
-                if (baseObject.isDefined) {
-                    System.out.println("BO TYPE: "+baseObject.get.cTpe)
-                }
-                val allParams = asCall(call.stmt).receiverOption ++ asCall(call.stmt).params
-                if (call.stmt.astID == Assignment.ASTID && (in match {
-                    case Variable(index) ⇒
-                        allParams.zipWithIndex.exists {
-                            case (param, _) if param.asVar.definedBy.contains(index) ⇒ true
-                            case _                                                   ⇒ false
-                        }
-                    case ArrayElement(index, _) ⇒
-                        allParams.zipWithIndex.exists {
-                            case (param, _) if param.asVar.definedBy.contains(index) ⇒ true
-                            case _                                                   ⇒ false
-                        }
-                    case _ ⇒ false
-                })) Set(Variable(call.index))
-                else Set.empty
-            }): OutsideAnalysisContextHandler)
-            case None ⇒ None
+        if (invokesScriptFunction(callee)) {
+            Some(handleScriptCall _)
+        } else {
+            super.outsideAnalysisContext(callee)
         }
-
     }
 }

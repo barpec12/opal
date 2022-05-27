@@ -260,6 +260,17 @@ public class TaintAnalysisTestClass {
         sink(sanitize(source()));
     }
 
+    static void sanitizeIntRef(IntegerReference iref) {
+        iref.i = 42;
+    }
+    @ForwardFlowPath({})
+    @BackwardFlowPath({})
+    public void calleeSanitize() {
+        IntegerReference secret = new IntegerReference(source());
+        sanitizeIntRef(secret);
+        sink(secret.i);
+    }
+
     @ForwardFlowPath({"instanceFieldsAreTainted"})
     @BackwardFlowPath({"instanceFieldsAreTainted", "sink"})
     public void instanceFieldsAreTainted() {
@@ -378,13 +389,20 @@ public class TaintAnalysisTestClass {
         return 1;
     }
 
-    private static int sanitize(int i) {return i;}
+    private static int sanitize(int i) {return 42;}
 
     private static void sink(int i) {
         System.out.println(i);
     }
     private static void sink(String s) {
         System.out.println(s);
+    }
+}
+
+class IntegerReference {
+    int i;
+    IntegerReference(int i) {
+        this.i = i;
     }
 }
 

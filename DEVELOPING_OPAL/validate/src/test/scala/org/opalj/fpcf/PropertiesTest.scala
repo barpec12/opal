@@ -7,7 +7,7 @@ import java.net.URL
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigValueFactory
 import org.opalj.bi.reader.ClassFileReader
-import org.opalj.bytecode.RTJar
+import org.opalj.bytecode.{JRELibraryFolder, RTJar}
 import org.scalatest.funspec.AnyFunSpec
 import org.scalatest.matchers.should.Matchers
 import org.opalj.log.LogContext
@@ -60,6 +60,7 @@ abstract class PropertiesTest extends AnyFunSpec with Matchers {
     )
 
     def withRT = false
+    def withFullLib = false
 
     /**
      * The representation of the fixture project.
@@ -81,7 +82,8 @@ abstract class PropertiesTest extends AnyFunSpec with Matchers {
             cf.thisType.packageName.startsWith("org/opalj/fpcf/properties")
         }
 
-        val libraryClassFiles = (if (withRT) ClassFiles(RTJar) else List()) ++ propertiesClassFiles
+        val libraryClassFiles = (if (withRT) ClassFiles(RTJar) else List()) ++
+            (if (withFullLib) ClassFiles(JRELibraryFolder) else List()) ++ propertiesClassFiles
 
         implicit val config: Config = createConfig()
 

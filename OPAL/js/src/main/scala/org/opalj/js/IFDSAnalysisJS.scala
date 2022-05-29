@@ -3,133 +3,197 @@ package org.opalj.js
 
 import org.opalj.br.Method
 import org.opalj.br.analyses.SomeProject
+import org.opalj.collection.immutable.IntTrieSet
 import org.opalj.ifds.Dependees.Getter
-import org.opalj.tac.Assignment
-import org.opalj.tac.fpcf.analyses.ifds.{JavaMethod, JavaStatement}
+import org.opalj.tac.{Call, Expr}
+import org.opalj.tac.fpcf.analyses.ifds.{JavaIFDSProblem, JavaMethod, JavaStatement}
 import org.opalj.tac.fpcf.analyses.ifds.taint.{ArrayElement, Fact, FlowFact, ForwardTaintProblem, InstanceField, NullFact, StaticField, Variable}
 
+import scala.collection.mutable
+
 class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
-    /**
-     * Called, when the exit to return facts are computed for some `callee` with the null fact and
-     * the callee's return value is assigned to a variable.
-     * Creates a taint, if necessary.
-     *
-     * @param callee The called method.
-     * @param call   The call.
-     * @return Some variable fact, if necessary. Otherwise none.
-     */
-    override protected def createTaints(callee: Method, call: JavaStatement): Set[Fact] =
-        if (callee.name == "source") Set(Variable(call.index))
-        else Set.empty
 
-    /**
-     * Called, when the call to return facts are computed for some `callee`.
-     * Creates a FlowFact, if necessary.
-     *
-     * @param callee The method, which was called.
-     * @param call   The call.
-     * @return Some FlowFact, if necessary. Otherwise None.
-     */
-    override protected def createFlowFact(callee: Method, call: JavaStatement, in: Fact): Option[FlowFact] =
-        if (callee.name == "sink" && in == Variable(-2))
-            Some(FlowFact(Seq(JavaMethod(call.method), JavaMethod(callee))))
-        else None
+  /**
+   * Called, when the exit to return facts are computed for some `callee` with the null fact and
+   * the callee's return value is assigned to a variable.
+   * Creates a taint, if necessary.
+   *
+   * @param callee The called method.
+   * @param call   The call.
+   * @return Some variable fact, if necessary. Otherwise none.
+   */
+  override protected def createTaints(callee: Method, call: JavaStatement): Set[Fact] =
+    if (callee.name == "source") Set(Variable(call.index))
+    else Set.empty
 
-    /**
-     * The entry points of this analysis.
-     */
-    override def entryPoints: Seq[(Method, Fact)] = (for {
-        m ← p.allMethodsWithBody
-        if m.name == "main"
+  /**
+   * Called, when the call to return facts are computed for some `callee`.
+   * Creates a FlowFact, if necessary.
+   *
+   * @param callee The method, which was called.
+   * @param call   The call.
+   * @return Some FlowFact, if necessary. Otherwise None.
+   */
+  override protected def createFlowFact(
+      callee: Method,
+      call: JavaStatement,
+      in: Fact
+  ): Option[FlowFact] =
+    if (callee.name == "sink" && in == Variable(-2))
+      Some(FlowFact(Seq(JavaMethod(call.method), JavaMethod(callee))))
+    else None
+
+  /**
+   * The entry points of this analysis.
+   */
+  override def entryPoints: Seq[(Method, Fact)] =
+    (for {
+      m <- p.allMethodsWithBody
+      if m.name == "main"
     } yield m -> NullFact)
 
-    /**
-     * Checks, if some `callee` is a sanitizer, which sanitizes its return value.
-     * In this case, no return flow facts will be created.
-     *
-     * @param callee The method, which was called.
-     * @return True, if the method is a sanitizer.
-     */
-    override protected def sanitizesReturnValue(callee: Method): Boolean = callee.name == "sanitize"
+  /**
+   * Checks, if some `callee` is a sanitizer, which sanitizes its return value.
+   * In this case, no return flow facts will be created.
+   *
+   * @param callee The method, which was called.
+   * @return True, if the method is a sanitizer.
+   */
+  override protected def sanitizesReturnValue(callee: Method): Boolean = callee.name == "sanitize"
 
-    /**
-     * Called in callToReturnFlow. This method can return whether the input fact
-     * will be removed after `callee` was called. I.e. the method could sanitize parameters.
-     *
-     * @param call The call statement.
-     * @param in   The fact which holds before the call.
-     * @return Whether in will be removed after the call.
-     */
-    override protected def sanitizesParameter(call: JavaStatement, in: Fact): Boolean = false
+  /**
+   * Called in callToReturnFlow. This method can return whether the input fact
+   * will be removed after `callee` was called. I.e. the method could sanitize parameters.
+   *
+   * @param call The call statement.
+   * @param in   The fact which holds before the call.
+   * @return Whether in will be removed after the call.
+   */
+  override protected def sanitizesParameter(call: JavaStatement, in: Fact): Boolean = false
 
-    def defaultOutsideAnalysisContextHandler(call: JavaStatement, in: Fact) = {
-        val allParams = asCall(call.stmt).receiverOption ++ asCall(call.stmt).params
-        if (call.stmt.astID == Assignment.ASTID && (in match {
-            case Variable(index) ⇒
-                allParams.zipWithIndex.exists {
-                    case (param, _) if param.asVar.definedBy.contains(index) ⇒ true
-                    case _                                                   ⇒ false
-                }
-            case ArrayElement(index, _) ⇒
-                allParams.zipWithIndex.exists {
-                    case (param, _) if param.asVar.definedBy.contains(index) ⇒ true
-                    case _                                                   ⇒ false
-                }
-            case _ ⇒ false
-        })) Set(Variable(call.index))
-        else Set.empty
+  def killFlow(
+      call: JavaStatement,
+      successor: JavaStatement,
+      in: Fact,
+      dependeesGetter: Getter
+  ): Set[Fact] = Set.empty
+
+  /**
+   * Checks whether we handle the method
+   * @param method
+   * @return True if function is handled by us
+   */
+  def invokesScriptFunction(method: Method): Boolean =
+    method.classFile.fqn == "javax/script/Invocable" && method.name == "invokeFunction"
+
+  /**
+   * Checks whether we handle the method
+   * @param callStmt
+   * @return True if function is handled by us
+   */
+  def invokesScriptFunction(callStmt: Call[JavaIFDSProblem.V]): Boolean =
+    callStmt.declaringClass.mostPreciseObjectType.fqn == "javax/script/Invocable" && callStmt.name == "invokeFunction"
+
+  /**
+   * If a parameter is tainted, the result will also be tainted.
+   * We assume that the callee does not call the source method.
+   */
+  override def outsideAnalysisContext(callee: Method): Option[OutsideAnalysisContextHandler] = {
+    if (invokesScriptFunction(callee)) {
+      Some(killFlow _)
+    } else {
+      super.outsideAnalysisContext(callee)
     }
+  }
 
-    def matchCallArgument(call: JavaStatement, in: Fact): Set[Fact] = {
-        val callStmt = asCall(call.stmt)
-        val allParamsWithIndices = callStmt.allParams.zipWithIndex
-        in match {
-            // Taint formal parameter if actual parameter is tainted
-            case Variable(index) ⇒
-                allParamsWithIndices.flatMap {
-                    case (param, paramIndex) if param.asVar.definedBy.contains(index) ⇒
-                        Some(Variable(index)) // offset JNIEnv
-                    case _ ⇒ None // Nothing to do
-                }.toSet
-            // Taint element of formal parameter if element of actual parameter is tainted
-            case ArrayElement(index, taintedIndex) ⇒
-                allParamsWithIndices.flatMap {
-                    case (param, paramIndex) if param.asVar.definedBy.contains(index) ⇒
-                        Some(ArrayElement(index, taintedIndex)) // offset JNIEnv
-                    case _ ⇒ None // Nothing to do
-                }.toSet
+  def isReferenceParameter(allParams: Seq[Expr[JavaIFDSProblem.V]], index: Int): Boolean = {
+    allParams.find(p => p.asVar.definedBy.contains(index)) match {
+      case Some(param) => param.asVar.value.isReferenceValue
+      case None => false
+    }
+  }
 
-            case InstanceField(index, declaredClass, taintedField) ⇒
-                // Taint field of formal parameter if field of actual parameter is tainted
-                // Only if the formal parameter is of a type that may have that field!
-                allParamsWithIndices.flatMap {
-                    case (param, paramIndex) if param.asVar.definedBy.contains(index) ⇒
-                        Some(InstanceField(index, declaredClass, taintedField))
-                    case _ ⇒ None // Nothing to do
-                }.toSet
-            case StaticField(classType, fieldName) ⇒ Set.empty
-            case NullFact                          ⇒ Set.empty
-            case _                                 ⇒ Set.empty
+  val NO_MATCH = 256
+  def getParameterIndex(allParamsWithIndex: Seq[(Expr[JavaIFDSProblem.V], Int)], index: Int): Int = {
+    allParamsWithIndex.find {
+      case (param, paramI) => param.asVar.definedBy.contains(index)
+    } match {
+      case Some((param, paramI)) => JavaIFDSProblem.switchParamAndVariableIndex(paramI,isStaticMethod = false)
+      case None => NO_MATCH
+    }
+  }
+
+  def findDeclarationOfEngine(method: Method, baseObject: JavaIFDSProblem.V) = {
+    val nextJStmts = searchJStmts(method, baseObject.definedBy)
+    nextJStmts.foreach(jstmt => if (jstmt.stmt.isAssignment) {
+      val assignStmt = jstmt.stmt.asAssignment
+      if (assignStmt.expr.isVirtualFunctionCall) {
+        val callStmt = asCall(assignStmt)
+        if (callStmt.name == "getEngineByName") {
+          val engineObject = assignStmt.targetVar
+          findEvalUsageOfEngine(method, engineObject)
         }
+      }
+    })
+  }
+
+  def findEvalUsageOfEngine(method: Method, baseObject: JavaIFDSProblem.V) = {
+    val nextJStmts = searchJStmts(method, baseObject.usedBy)
+    nextJStmts.foreach(jstmt => if
+      val callStmt = asCall(jstmt.stmt)
+      if (callStmt.name == "eval") {
+        print(callStmt)
+      }
+    })
+  }
+
+  /**
+   * Finds all defSites inside the method.
+   * @param method method
+   * @param defSites definition sites
+   * @return definition sites as JavaStatement
+   */
+  def searchJStmts(method: Method, defSites: IntTrieSet): Set[JavaStatement] = {
+    var result = Set[JavaStatement]()
+    val worklist = mutable.Stack[JavaStatement]()
+    worklist.pushAll(this.icfg.startStatements(method))
+    var visited = Set[JavaStatement]()
+    while (worklist.nonEmpty) {
+      val stmt = worklist.pop()
+      visited += stmt
+      if (defSites.contains(stmt.index)) {
+        result += stmt
+      }
+      val nextToVisit = this.icfg.nextStatements(stmt) -- visited
+      worklist.pushAll(nextToVisit)
+    }
+    result
+  }
+
+
+  override def callToReturnFlow(call: JavaStatement, in: Fact): Set[Fact] = {
+    val callStmt = asCall(call.stmt)
+    val allParams = callStmt.allParams
+
+    if (invokesScriptFunction(callStmt)) {
+      val allParamsWithIndex = callStmt.allParams.zipWithIndex
+      in match {
+        // invokeFunction takes a function name and a variable length argument. This is always an array internally.
+        case ArrayElement(index, taintedIndex) if getParameterIndex(allParamsWithIndex, index) == -3 =>
+//          val taintedParam = allParams(2).asVar
+          val baseObject = allParams.head
+          findDeclarationOfEngine(call.method, baseObject.asVar)
+        case _ =>
+      }
     }
 
-    def handleScriptCall(call: JavaStatement, successor: JavaStatement, in: Fact, dependeesGetter: Getter): Set[Fact] = {
-        val argSet = matchCallArgument(call, in)
-        argSet
+    in match {
+      // Local variables that are of a Reference type flow through the callee
+      case Variable(index) if isReferenceParameter(allParams, index) => Set.empty
+      case ArrayElement(index, taintedIndex) if isReferenceParameter(allParams, index) => Set.empty
+      case InstanceField(index, declClass, taintedField) if isReferenceParameter(allParams, index) => Set.empty
+      case StaticField(_, _) => Set.empty
+      case f: Fact => Set(f)
     }
-
-    def invokesScriptFunction(callee: Method): Boolean =
-        callee.classFile.fqn == "javax/script/Invocable" && callee.name == "invokeFunction"
-
-    /**
-     * If a parameter is tainted, the result will also be tainted.
-     * We assume that the callee does not call the source method.
-     */
-    override def outsideAnalysisContext(callee: Method): Option[OutsideAnalysisContextHandler] = {
-        if (invokesScriptFunction(callee)) {
-            Some(handleScriptCall _)
-        } else {
-            super.outsideAnalysisContext(callee)
-        }
-    }
+  }
 }

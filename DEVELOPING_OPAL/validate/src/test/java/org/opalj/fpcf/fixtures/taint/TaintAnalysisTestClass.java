@@ -301,6 +301,48 @@ public class TaintAnalysisTestClass {
         sink(wrapper.field + 1);
     }
 
+    // FIXME: IFDSAnalysis.scala#L323 ?!?
+    @ForwardFlowPath({})
+    @BackwardFlowPath({})
+    public void staticCalleeOverwritesTaint() {
+        Wrapper wrapper = new Wrapper(source());
+        overwriteField(wrapper);
+        sink(wrapper.field);
+    }
+
+    @ForwardFlowPath({})
+    @BackwardFlowPath({})
+    public void calleeOverwritesItsOwnField() {
+        Wrapper wrapper = new Wrapper(source());
+        wrapper.overwrite();
+        sink(wrapper.field);
+    }
+
+    @ForwardFlowPath({})
+    @BackwardFlowPath({})
+    public void instanceCalleeOverwritesTaint() {
+        Wrapper wrapper = new Wrapper(source());
+        wrapper.overwriteArg(wrapper);
+        sink(wrapper.field);
+    }
+
+    @ForwardFlowPath({})
+    @BackwardFlowPath({})
+    public void calleeOverwritesStaticFieldTaint() {
+        staticField = source();
+        overwriteStaticField();
+        sink(staticField);
+    }
+
+    @ForwardFlowPath({})
+    @BackwardFlowPath({})
+    public void taintPartOfArrayOverwrite() {
+        int[] arr = new int[1];
+        arr[0] = source();
+        overwriteFirstArrayElement(arr);
+        sink(staticField);
+    }
+
     //TODO Tests für statische Felder über Methodengrenzen
 
     //Does not work, because we do not know which exceptions cannot be thrown.
@@ -380,6 +422,18 @@ public class TaintAnalysisTestClass {
 
     private static int sanitize(int i) {return i;}
 
+    private static void overwriteField(Wrapper wrapper) {
+        wrapper.field = 42;
+    }
+
+    private static void overwriteStaticField() {
+        staticField = 42;
+    }
+
+    private static void overwriteFirstArrayElement(int[] arr) {
+        arr[0] = 42;
+    }
+
     private static void sink(int i) {
         System.out.println(i);
     }
@@ -413,5 +467,13 @@ class Wrapper {
 
     Wrapper(int field) {
         this.field = field;
+    }
+
+    public void overwrite() {
+        this.field = 42;
+    }
+
+    public void overwriteArg(Wrapper wrapper) {
+        wrapper.field = 42;
     }
 }

@@ -41,16 +41,33 @@ abstract class ForwardTaintProblem(project: SomeProject)
             case PutField.ASTID ⇒
                 val put = statement.stmt.asPutField
                 val definedBy = put.objRef.asVar.definedBy
-                if (isTainted(put.value, in))
+                if (isTainted(put.value, in)) {
+                    // RHS is tainted, thus the lhs as well
                     Set(in) ++ definedBy.map { InstanceField(_, put.declaringClass, put.name) }
-                else
-                    Set(in)
+                } else in match {
+                    /* For anyone wondering why I ignored the index, take a look at the instanceCalleeOverwritesTaint()
+                       test case. Basically, if the argument is the same as the base object, the same field is duplicated
+                       as two facts inside the callee, but the defSite is only the parameter. If we would take the index
+                       into account, there would be a false positive. */
+                    case field: InstanceField if in == InstanceField(field.index, put.declaringClass, put.name) ⇒
+                        // If LHS is equal to the instance field tainted, untaint the field here
+                        Set.empty
+                    case _ ⇒
+                        // if the taint is not affected, just leave it alive
+                        Set(in)
+                }
             case PutStatic.ASTID ⇒
                 val put = statement.stmt.asPutStatic
-                if (isTainted(put.value, in))
+                if (isTainted(put.value, in)) {
+                    // RHS is tainted, thus the lhs as well
                     Set(in, StaticField(put.declaringClass, put.name))
-                else
+                } else if (in == StaticField(put.declaringClass, put.name)) {
+                    // If LHS is equal to the taint, untaint the field here
+                    Set.empty
+                } else {
+                    // if the taint is not affected, just leave it alive
                     Set(in)
+                }
             case _ ⇒ Set(in)
         }
     }
@@ -193,8 +210,32 @@ abstract class ForwardTaintProblem(project: SomeProject)
     /**
      * Removes taints according to `sanitizesParameter`.
      */
-    override def callToReturnFlow(call: JavaStatement, in: Fact): Set[Fact] =
-        if (sanitizesParameter(call, in)) Set() else Set(in)
+    override def callToReturnFlow(call: JavaStatement, in: Fact): Set[Fact] = {
+
+        if (sanitizesParameter(call, in)) return Set.empty
+
+        val callStmt = asCall(call.stmt)
+        val allParams = callStmt.allParams
+
+        def isRefTypeParam(index: Int): Boolean = {
+            allParams.find(p ⇒ p.asVar.definedBy.contains(index)) match {
+                case Some(param) ⇒ param.asVar.value.isReferenceValue
+                case None        ⇒ false
+            }
+        }
+
+        in match {
+            // Local variables that are of a reference type flow through the callee
+            case Variable(index) if isRefTypeParam(index) ⇒ Set.empty
+            case ArrayElement(index, taintedIndex) if isRefTypeParam(index) ⇒ Set.empty
+            // Fields can be written by reference, thus always through through the callee
+            case InstanceField(index, declClass, taintedField) if allParams.exists(p ⇒ p.asVar.definedBy.contains(index)) ⇒ Set.empty
+            // Static fields are accessible everywhere, thus have to flow through all callee.
+            case StaticField(_, _) ⇒ Set.empty
+            // All facts that do not match any parameter or base object, as well as primitives flow over a call
+            case f: Fact ⇒ Set(f)
+        }
+    }
 
     /**
      * Called, when the exit to return facts are computed for some `callee` with the null fact and

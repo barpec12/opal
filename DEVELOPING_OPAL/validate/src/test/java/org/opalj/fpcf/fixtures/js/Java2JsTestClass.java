@@ -7,6 +7,8 @@ import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
 
+import static java.lang.Integer.parseInt;
+
 public class Java2JsTestClass {
     private static int staticField;
 
@@ -17,10 +19,17 @@ public class Java2JsTestClass {
     {
         ScriptEngineManager sem = new ScriptEngineManager();
         ScriptEngine se = sem.getEngineByName("JavaScript");
+        int x = parseInt("1337");
         try {
-            se.eval("function check(str) {\n" +
-                    "    return str === \"1337\";\n" +
-                    "}");
+            if (x == 0) {
+                se.eval("function check(str) {\n" +
+                        "    return str === \"1337\";\n" +
+                        "}");
+            } else {
+                se.eval("function check(str) {\n" +
+                        "    return str === \"42\";\n" +
+                        "}");
+            }
         } catch (ScriptException e) {
             // never happens
         }

@@ -211,7 +211,6 @@ abstract class ForwardTaintProblem(project: SomeProject)
      * Removes taints according to `sanitizesParameter`.
      */
     override def callToReturnFlow(call: JavaStatement, in: Fact): Set[Fact] = {
-
         if (sanitizesParameter(call, in)) return Set.empty
 
         val callStmt = asCall(call.stmt)
@@ -224,16 +223,23 @@ abstract class ForwardTaintProblem(project: SomeProject)
             }
         }
 
-        in match {
-            // Local variables that are of a reference type flow through the callee
-            case Variable(index) if isRefTypeParam(index) ⇒ Set.empty
-            case ArrayElement(index, taintedIndex) if isRefTypeParam(index) ⇒ Set.empty
-            // Fields can be written by reference, thus always through through the callee
-            case InstanceField(index, declClass, taintedField) if allParams.exists(p ⇒ p.asVar.definedBy.contains(index)) ⇒ Set.empty
-            // Static fields are accessible everywhere, thus have to flow through all callee.
-            case StaticField(_, _) ⇒ Set.empty
-            // All facts that do not match any parameter or base object, as well as primitives flow over a call
-            case f: Fact ⇒ Set(f)
+        if (icfg.getCalleesIfCallStatement(call).isEmpty) {
+            // If the call does not have any callees, the code is unknown
+            // and we safely handle it as the identity
+            Set(in)
+        } else {
+            in match {
+                // Local variables that are of a reference type flow through the callee
+                case Variable(index) if isRefTypeParam(index) ⇒ Set.empty
+                // Arrays are references passed-by-value, thus their contents might change in the callee
+                case ArrayElement(index, taintedIndex) if allParams.exists(p ⇒ p.asVar.definedBy.contains(index)) ⇒ Set.empty
+                // Fields can be written by reference, thus always through through the callee
+                case InstanceField(index, declClass, taintedField) if allParams.exists(p ⇒ p.asVar.definedBy.contains(index)) ⇒ Set.empty
+                // Static fields are accessible everywhere, thus have to flow through all callee.
+                case StaticField(_, _) ⇒ Set.empty
+                // All facts that do not match any parameter or base object, as well as primitives flow over a call
+                case f: Fact ⇒ Set(f)
+            }
         }
     }
 

@@ -1,11 +1,12 @@
 /* BSD 2-Clause License - see OPAL/LICENSE for details. */
 package org.opalj.js
 
+import org.opalj.ai.domain.l1.DefaultStringValuesBinding
 import org.opalj.br.Method
 import org.opalj.br.analyses.SomeProject
 import org.opalj.collection.immutable.IntTrieSet
 import org.opalj.ifds.Dependees.Getter
-import org.opalj.tac.{Call, Expr}
+import org.opalj.tac.{Assignment, Call, Expr, ExprStmt, FunctionCall, Stmt}
 import org.opalj.tac.fpcf.analyses.ifds.{JavaIFDSProblem, JavaMethod, JavaStatement}
 import org.opalj.tac.fpcf.analyses.ifds.taint.{ArrayElement, Fact, FlowFact, ForwardTaintProblem, InstanceField, NullFact, StaticField, Variable}
 
@@ -123,6 +124,18 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
     }
   }
 
+  def maybeCall(stmt: Stmt[JavaIFDSProblem.V]): Option[FunctionCall[JavaIFDSProblem.V]] = {
+    def isCall(expr: Expr[JavaIFDSProblem.V]) = expr.isVirtualFunctionCall || expr.isStaticFunctionCall
+
+    stmt match {
+      case exprStmt: ExprStmt[JavaIFDSProblem.V] if (isCall(exprStmt.expr)) =>
+        Some(exprStmt.expr.asFunctionCall)
+      case assignStmt: Assignment[JavaIFDSProblem.V] if (isCall(assignStmt.expr)) =>
+        Some(assignStmt.expr.asFunctionCall)
+      case _ => None
+    }
+  }
+
   def findDeclarationOfEngine(method: Method, baseObject: JavaIFDSProblem.V) = {
     val nextJStmts = searchJStmts(method, baseObject.definedBy)
     nextJStmts.foreach(jstmt => if (jstmt.stmt.isAssignment) {
@@ -139,21 +152,20 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
 
   def findEvalUsageOfEngine(method: Method, baseObject: JavaIFDSProblem.V) = {
     val nextJStmts = searchJStmts(method, baseObject.usedBy)
-    nextJStmts.foreach(jstmt => if
-      val callStmt = asCall(jstmt.stmt)
-      if (callStmt.name == "eval") {
-        print(callStmt)
-      }
+    nextJStmts.foreach(jstmt => maybeCall(jstmt.stmt) match {
+      case Some(call) =>
+        val value = call.params.head.asVar.value
+      case None =>
     })
   }
 
   /**
-   * Finds all defSites inside the method.
+   * Finds all definiton/use sites inside the method.
    * @param method method
-   * @param defSites definition sites
-   * @return definition sites as JavaStatement
+   * @param sites definition or use sites
+   * @return sites as JavaStatement
    */
-  def searchJStmts(method: Method, defSites: IntTrieSet): Set[JavaStatement] = {
+  def searchJStmts(method: Method, sites: IntTrieSet): Set[JavaStatement] = {
     var result = Set[JavaStatement]()
     val worklist = mutable.Stack[JavaStatement]()
     worklist.pushAll(this.icfg.startStatements(method))
@@ -161,7 +173,7 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
     while (worklist.nonEmpty) {
       val stmt = worklist.pop()
       visited += stmt
-      if (defSites.contains(stmt.index)) {
+      if (sites.contains(stmt.index)) {
         result += stmt
       }
       val nextToVisit = this.icfg.nextStatements(stmt) -- visited
@@ -187,13 +199,21 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
       }
     }
 
-    in match {
-      // Local variables that are of a Reference type flow through the callee
-      case Variable(index) if isReferenceParameter(allParams, index) => Set.empty
-      case ArrayElement(index, taintedIndex) if isReferenceParameter(allParams, index) => Set.empty
-      case InstanceField(index, declClass, taintedField) if isReferenceParameter(allParams, index) => Set.empty
-      case StaticField(_, _) => Set.empty
-      case f: Fact => Set(f)
+    // TODO: third parameter for callToReturn "hasCallee: boolean"?
+    if (icfg.getCalleesIfCallStatement(call).isEmpty) {
+      // If the call does not have any callees, the code is unknown
+      // and we safely handle it as the identity
+      Set(in)
+    } else {
+      // Otherwise use the java call semantics
+      in match {
+        // Local variables that are of a Reference type flow through the callee
+        case Variable(index) if isReferenceParameter(allParams, index) => Set.empty
+        case ArrayElement(index, taintedIndex) if isReferenceParameter(allParams, index) => Set.empty
+        case InstanceField(index, declClass, taintedField) if allParams.zipWithIndex.exists(tpl => tpl._2 == index) => Set.empty
+        case StaticField(_, _) => Set.empty
+        case f: Fact => Set(f)
+      }
     }
   }
 }

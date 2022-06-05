@@ -14,87 +14,88 @@ import scala.collection.mutable
 
 class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
 
-  /**
-   * Called, when the exit to return facts are computed for some `callee` with the null fact and
-   * the callee's return value is assigned to a variable.
-   * Creates a taint, if necessary.
-   *
-   * @param callee The called method.
-   * @param call   The call.
-   * @return Some variable fact, if necessary. Otherwise none.
-   */
-  override protected def createTaints(callee: Method, call: JavaStatement): Set[Fact] =
-    if (callee.name == "source") Set(Variable(call.index))
-    else Set.empty
+    /**
+     * Called, when the exit to return facts are computed for some `callee` with the null fact and
+     * the callee's return value is assigned to a variable.
+     * Creates a taint, if necessary.
+     *
+     * @param callee The called method.
+     * @param call   The call.
+     * @return Some variable fact, if necessary. Otherwise none.
+     */
+    override protected def createTaints(callee: Method, call: JavaStatement): Set[Fact] =
+        if (callee.name == "source") Set(Variable(call.index))
+        else Set.empty
 
-  /**
-   * Called, when the call to return facts are computed for some `callee`.
-   * Creates a FlowFact, if necessary.
-   *
-   * @param callee The method, which was called.
-   * @param call   The call.
-   * @return Some FlowFact, if necessary. Otherwise None.
-   */
-  override protected def createFlowFact(
-      callee: Method,
-      call: JavaStatement,
-      in: Fact
-  ): Option[FlowFact] =
-    if (callee.name == "sink" && in == Variable(-2))
-      Some(FlowFact(Seq(JavaMethod(call.method), JavaMethod(callee))))
-    else None
+    /**
+     * Called, when the call to return facts are computed for some `callee`.
+     * Creates a FlowFact, if necessary.
+     *
+     * @param callee The method, which was called.
+     * @param call   The call.
+     * @return Some FlowFact, if necessary. Otherwise None.
+     */
+    override protected def createFlowFact(
+        callee: Method,
+        call:   JavaStatement,
+        in:     Fact
+    ): Option[FlowFact] =
+        if (callee.name == "sink" && in == Variable(-2))
+            Some(FlowFact(Seq(JavaMethod(call.method), JavaMethod(callee))))
+        else None
 
-  /**
-   * The entry points of this analysis.
-   */
-  override def entryPoints: Seq[(Method, Fact)] =
-    (for {
-      m <- p.allMethodsWithBody
-      if m.name == "main"
-    } yield m -> NullFact)
+    /**
+     * The entry points of this analysis.
+     */
+    override def entryPoints: Seq[(Method, Fact)] =
+        (for {
+            m ← p.allMethodsWithBody
+            if m.name == "main"
+        } yield m -> NullFact)
 
-  /**
-   * Checks, if some `callee` is a sanitizer, which sanitizes its return value.
-   * In this case, no return flow facts will be created.
-   *
-   * @param callee The method, which was called.
-   * @return True, if the method is a sanitizer.
-   */
-  override protected def sanitizesReturnValue(callee: Method): Boolean = callee.name == "sanitize"
+    /**
+     * Checks, if some `callee` is a sanitizer, which sanitizes its return value.
+     * In this case, no return flow facts will be created.
+     *
+     * @param callee The method, which was called.
+     * @return True, if the method is a sanitizer.
+     */
+    override protected def sanitizesReturnValue(callee: Method): Boolean = callee.name == "sanitize"
 
-  /**
-   * Called in callToReturnFlow. This method can return whether the input fact
-   * will be removed after `callee` was called. I.e. the method could sanitize parameters.
-   *
-   * @param call The call statement.
-   * @param in   The fact which holds before the call.
-   * @return Whether in will be removed after the call.
-   */
-  override protected def sanitizesParameter(call: JavaStatement, in: Fact): Boolean = false
+    /**
+     * Called in callToReturnFlow. This method can return whether the input fact
+     * will be removed after `callee` was called. I.e. the method could sanitize parameters.
+     *
+     * @param call The call statement.
+     * @param in   The fact which holds before the call.
+     * @return Whether in will be removed after the call.
+     */
+    override protected def sanitizesParameter(call: JavaStatement, in: Fact): Boolean = false
 
-  def killFlow(
-      call: JavaStatement,
-      successor: JavaStatement,
-      in: Fact,
-      dependeesGetter: Getter
-  ): Set[Fact] = Set.empty
+    def killFlow(
+        call:            JavaStatement,
+        successor:       JavaStatement,
+        in:              Fact,
+        dependeesGetter: Getter
+    ): Set[Fact] = Set.empty
 
-  /**
-   * Checks whether we handle the method
-   * @param method
-   * @return True if function is handled by us
-   */
-  def invokesScriptFunction(method: Method): Boolean =
-    method.classFile.fqn == "javax/script/Invocable" && method.name == "invokeFunction"
+    /**
+     * Checks whether we handle the method
+     * @param method
+     * @return True if function is handled by us
+     */
+    def invokesScriptFunction(method: Method): Boolean =
+        method.classFile.fqn == "javax/script/Invocable" && method.name == "invokeFunction"
 
-  /**
-   * Checks whether we handle the method
-   * @param callStmt
-   * @return True if function is handled by us
-   */
-  def invokesScriptFunction(callStmt: Call[JavaIFDSProblem.V]): Boolean =
-    callStmt.declaringClass.mostPreciseObjectType.fqn == "javax/script/Invocable" && callStmt.name == "invokeFunction"
+    /**
+     * Checks whether we handle the method
+     * @param callStmt
+     * @return True if function is handled by us
+     */
+    def invokesScriptFunction(callStmt: Call[JavaIFDSProblem.V]): Boolean =
+        callStmt.declaringClass.mostPreciseObjectType.fqn == "javax/script/Invocable" && callStmt.name == "invokeFunction"
 
+<<<<<<< HEAD
   /**
    * If a parameter is tainted, the result will also be tainted.
    * We assume that the callee does not call the source method.
@@ -215,5 +216,4 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
         case f: Fact => Set(f)
       }
     }
-  }
 }

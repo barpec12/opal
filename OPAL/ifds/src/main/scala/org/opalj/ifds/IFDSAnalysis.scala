@@ -363,7 +363,13 @@ class IFDSAnalysis[IFDSFact <: AbstractIFDSFact, C <: AnyRef, S <: Statement[C, 
      */
     private def normalFlow(statement: S, in: IFDSFact, predecessor: Option[S]): Set[IFDSFact] = {
         statistics.normalFlow += 1
-        addNullFactIfConfigured(in, ifdsProblem.normalFlow(statement, in, predecessor))
+        val out = ifdsProblem.normalFlow(statement, in, predecessor)
+        printf("Normal: %s\n", statement.toString)
+        printf("In: %s\n", in.toString)
+        printf("Out: [")
+        out.foreach(f ⇒ printf("%s, ", f.toString))
+        printf("]\n\n")
+        addNullFactIfConfigured(in, out)
     }
 
     /**
@@ -375,7 +381,13 @@ class IFDSAnalysis[IFDSFact <: AbstractIFDSFact, C <: AnyRef, S <: Statement[C, 
      */
     private def callFlow(call: S, callee: C, in: IFDSFact): Set[IFDSFact] = {
         statistics.callFlow += 1
-        addNullFactIfConfigured(in, ifdsProblem.callFlow(call, callee, in))
+        val out = ifdsProblem.callFlow(call, callee, in)
+        printf("Call: %s\n", call.toString)
+        printf("In: %s\n", in.toString)
+        printf("Out: [")
+        out.foreach(f ⇒ printf("%s, ", f.toString))
+        printf("]\n\n")
+        addNullFactIfConfigured(in, out)
     }
 
     /**
@@ -388,7 +400,13 @@ class IFDSAnalysis[IFDSFact <: AbstractIFDSFact, C <: AnyRef, S <: Statement[C, 
      */
     private def returnFlow(exit: S, in: IFDSFact, call: S, callFact: IFDSFact): Set[IFDSFact] = {
         statistics.returnFlow += 1
-        addNullFactIfConfigured(in, ifdsProblem.returnFlow(exit, in, call, callFact))
+        val out = ifdsProblem.returnFlow(exit, in, call, callFact)
+        printf("Return: %s\n", call.toString)
+        printf("In: %s\n", in.toString)
+        printf("Out: [")
+        out.foreach(f ⇒ printf("%s, ", f.toString))
+        printf("]\n\n")
+        addNullFactIfConfigured(in, out)
     }
 
     /**
@@ -399,7 +417,13 @@ class IFDSAnalysis[IFDSFact <: AbstractIFDSFact, C <: AnyRef, S <: Statement[C, 
      */
     private def callToReturnFlow(call: S, in: IFDSFact): Set[IFDSFact] = {
         statistics.callToReturnFlow += 1
-        addNullFactIfConfigured(in, ifdsProblem.callToReturnFlow(call, in))
+        val out = ifdsProblem.callToReturnFlow(call, in)
+        printf("CallToReturn: %s\n", call.toString)
+        printf("In: %s\n", in.toString)
+        printf("Out: [")
+        out.foreach(f ⇒ printf("%s, ", f.toString))
+        printf("]\n\n")
+        addNullFactIfConfigured(in, out)
     }
 
     private def addNullFactIfConfigured(in: IFDSFact, out: Set[IFDSFact]): Set[IFDSFact] = {

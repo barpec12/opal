@@ -1,7 +1,7 @@
 /* BSD 2-Clause License - see OPAL/LICENSE for details. */
 package org.opalj.js
 
-import org.opalj.br.Method
+import org.opalj.br.{Method, ObjectType}
 import org.opalj.br.analyses.SomeProject
 import org.opalj.collection.immutable.IntTrieSet
 import org.opalj.ifds.Dependees.Getter
@@ -78,26 +78,27 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
         dependeesGetter: Getter
     ): Set[Fact] = Set.empty
 
-    /**
-     * Checks whether we handle the method
-     *
-     * @param method
-     * @return True if function is handled by us
-     */
-    def invokesScriptFunction(method: Method): Boolean =
-        method.classFile.fqn == "javax/script/Invocable" && method.name == "invokeFunction"
+    val scriptEngineMethods: Map[ObjectType, List[String]] = Map(
+      ObjectType("javax/script/Invocable") -> List("invokeFunction"),
+      ObjectType("javax/script/ScriptEngine") -> List("eval", "put")
+    )
 
-    val scriptEngineMethods: Set[String] = Set("invokeFunction", "eval")
     /**
      * Checks whether we handle the method
-     *
-     * @param callStmt
-     * @return True if function is handled by us
+     * @param objType type of the base object
+     * @param methodName method name of the call
+     * @return true if we have a rule for the method call
      */
+    def invokesScriptFunction(objType: ObjectType, methodName: String): Boolean =
+      scriptEngineMethods.exists(kv => objType.isSubtypeOf(kv._1)(p.classHierarchy) && kv._2.contains(methodName))
+
     def invokesScriptFunction(callStmt: Call[JavaIFDSProblem.V]): Boolean =
-        callStmt.declaringClass.mostPreciseObjectType.fqn == "javax/script/Invocable" && scriptEngineMethods.contains(callStmt.name)
+      invokesScriptFunction(callStmt.declaringClass.mostPreciseObjectType, callStmt.name)
 
-    /**
+    def invokesScriptFunction(method: Method): Boolean =
+      invokesScriptFunction(method.classFile.thisType, method.name)
+
+  /**
      * If a parameter is tainted, the result will also be tainted.
      * We assume that the callee does not call the source method.
      */
@@ -171,7 +172,7 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
      * @param obj ScriptEngine variable
      * @return javascript source code
      */
-    def findJSSource(method: Method, obj: JavaIFDSProblem.V): Set[JavaScriptSource] = {
+    def findJSSourceOnInvokeFunction(method: Method, obj: JavaIFDSProblem.V): Set[JavaScriptSource] = {
         def findCallOnObject(sites: IntTrieSet, methodName: String): Set[JavaStatement] = {
             searchJStmts(method, sites).map(jstmt ⇒ maybeCall(jstmt.stmt) match {
                 case Some(call) if (call.name == methodName) ⇒ Some(jstmt)
@@ -220,12 +221,13 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
 
         if (invokesScriptFunction(callStmt)) {
             in match {
-                // TODO: handle more than just invokeFunction, e.g. direct eval call. Might need an analysis that returns
-                //       whether the given code auto-executes or is just a set of functions
-                // invokeFunction takes a function name and a variable length argument. This is always an array internally.
-                case ArrayElement(index, taintedIndex) if getParameterIndex(allParamsWithIndex, index) == -3 ⇒
-                    val sourceSet = findJSSource(call.method, allParams.head.asVar)
+                // invokeFunction takes a function name and a variable length argument. This is always an array in TACAI.
+                case ArrayElement(index, taintedIndex) if callStmt.name == "invokeFunction" && getParameterIndex(allParamsWithIndex, index) == -3 ⇒
+                    val sourceSet = findJSSourceOnInvokeFunction(call.method, allParams.head.asVar)
                     print(sourceSet)
+                case Variable(index) if callStmt.name == "eval" && getParameterIndex(allParamsWithIndex, index) == -3 =>
+                    // TODO: Bindings
+                    val sourceSet = varToJavaScriptSource(call.method, allParams(-2).asVar)
                 case _ ⇒ // we do not handle this case, thus leave it to the default call semantics
             }
         }

@@ -209,48 +209,23 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
 
     override def callToReturnFlow(call: JavaStatement, in: Fact, successor: JavaStatement): Set[Fact] = {
         val callStmt = asCall(call.stmt)
+        if (!invokesScriptFunction(callStmt))
+          return super.callToReturnFlow(call, in, successor)
+
         val allParams = callStmt.allParams
         val allParamsWithIndex = callStmt.allParams.zipWithIndex
 
-        def isRefTypeParam(index: Int): Boolean = {
-            allParams.find(p ⇒ p.asVar.definedBy.contains(index)) match {
-                case Some(param) ⇒ param.asVar.value.isReferenceValue
-                case None        ⇒ false
-            }
+        in match {
+            // invokeFunction takes a function name and a variable length argument. This is always an array in TACAI.
+            case ArrayElement(index, taintedIndex) if callStmt.name == "invokeFunction" && getParameterIndex(allParamsWithIndex, index) == -3 ⇒
+                val sourceSet = findJSSourceOnInvokeFunction(call.method, allParams.head.asVar)
+                print(sourceSet)
+            case Variable(index) if callStmt.name == "eval" && getParameterIndex(allParamsWithIndex, index) == -3 =>
+                // TODO: Bindings
+                // val sourceSet = varToJavaScriptSource(call.method, allParams(-2).asVar)
+            case _ ⇒ // we do not handle this case, thus leave it to the default call semantics
         }
 
-        if (invokesScriptFunction(callStmt)) {
-            in match {
-                // invokeFunction takes a function name and a variable length argument. This is always an array in TACAI.
-                case ArrayElement(index, taintedIndex) if callStmt.name == "invokeFunction" && getParameterIndex(allParamsWithIndex, index) == -3 ⇒
-                    val sourceSet = findJSSourceOnInvokeFunction(call.method, allParams.head.asVar)
-                    print(sourceSet)
-                case Variable(index) if callStmt.name == "eval" && getParameterIndex(allParamsWithIndex, index) == -3 =>
-                    // TODO: Bindings
-//                    val sourceSet = varToJavaScriptSource(call.method, allParams(-2).asVar)
-                case _ ⇒ // we do not handle this case, thus leave it to the default call semantics
-            }
-        }
-
-        // TODO: third parameter for callToReturn "hasCallee: boolean"?
-        if (icfg.getCalleesIfCallStatement(call).isEmpty) {
-            // If the call does not have any callees, the code is unknown
-            // and we safely handle it as the identity
-            Set(in)
-        } else {
-            // Otherwise use the java call semantics
-            in match {
-                // Local variables that are of a reference type flow through the callee
-                case Variable(index) if isRefTypeParam(index) ⇒ Set.empty
-                // Arrays are references passed-by-value, thus their contents might change in the callee
-                case ArrayElement(index, taintedIndex) if allParams.exists(p ⇒ p.asVar.definedBy.contains(index)) ⇒ Set.empty
-                // Fields can be written by reference, thus always through through the callee
-                case InstanceField(index, declClass, taintedField) if allParams.exists(p ⇒ p.asVar.definedBy.contains(index)) ⇒ Set.empty
-                // Static fields are accessible everywhere, thus have to flow through all callee.
-                case StaticField(_, _) ⇒ Set.empty
-                // All facts that do not match any parameter or base object, as well as primitives flow over a call
-                case f: Fact ⇒ Set(f)
-            }
-        }
+        Set()
     }
 }

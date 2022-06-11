@@ -231,6 +231,7 @@ abstract class ForwardTaintProblem(project: SomeProject)
             // and we safely handle it as the identity
             Set(in)
         } else {
+          // Otherwise use the java call semantics
             in match {
                 // Local variables that are of a reference type flow through the callee
                 case Variable(index) if isRefTypeParam(index) ⇒ Set.empty

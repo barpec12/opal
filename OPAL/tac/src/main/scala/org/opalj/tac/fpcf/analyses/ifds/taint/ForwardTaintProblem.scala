@@ -135,7 +135,9 @@ abstract class ForwardTaintProblem(project: SomeProject)
      * Creates new taints and FlowFacts, if necessary.
      * If the sanitize method was called, nothing will be tainted.
      */
-    override def returnFlow(exit: JavaStatement, in: Fact, call: JavaStatement, callFact: Fact): Set[Fact] = {
+    override def returnFlow(exit: JavaStatement, in: Fact, call: JavaStatement, callFact: Fact, successor: JavaStatement): Set[Fact] = {
+        if(!isPossibleReturnFlow(exit, successor)) return Set.empty
+
         val callee = exit.callable()
         /**
          * Checks whether the callee's formal parameter is of a reference type.
@@ -210,7 +212,8 @@ abstract class ForwardTaintProblem(project: SomeProject)
     /**
      * Removes taints according to `sanitizesParameter`.
      */
-    override def callToReturnFlow(call: JavaStatement, in: Fact): Set[Fact] = {
+
+    override def callToReturnFlow(call: JavaStatement, in: Fact, successor: JavaStatement): Set[Fact] = {
         if (sanitizesParameter(call, in)) return Set.empty
 
         val callStmt = asCall(call.stmt)

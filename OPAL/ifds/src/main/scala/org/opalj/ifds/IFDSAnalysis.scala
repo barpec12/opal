@@ -146,6 +146,8 @@ class IFDSAnalysis[IFDSFact <: AbstractIFDSFact, C <: AnyRef, S <: Statement[C, 
     implicit var statistics = new Statistics
     val icfg = ifdsProblem.icfg
 
+    val DEBUG = true
+
     /**
      * Performs an IFDS analysis for a method-fact-pair.
      *
@@ -281,7 +283,7 @@ class IFDSAnalysis[IFDSFact <: AbstractIFDSFact, C <: AnyRef, S <: Statement[C, 
                 case None ⇒
                     for {
                         successor ← successors
-                        out ← concreteCallFlow(call, callee, in) // ifds line 17 (only summary edges)
+                        out ← concreteCallFlow(call, callee, in, successor) // ifds line 17 (only summary edges)
                     } {
                         propagate(successor, out, call) // ifds line 18
                     }
@@ -289,13 +291,13 @@ class IFDSAnalysis[IFDSFact <: AbstractIFDSFact, C <: AnyRef, S <: Statement[C, 
         }
         for {
             successor ← successors
-            out ← callToReturnFlow(call, in) // ifds line 17 (without summary edge propagation)
+            out ← callToReturnFlow(call, in, successor) // ifds line 17 (without summary edge propagation)
         } {
             propagate(successor, out, call) // ifds line 18
         }
     }
 
-    private def concreteCallFlow(call: S, callee: C, in: IFDSFact)(implicit state: State, work: Work): Set[IFDSFact] = {
+    private def concreteCallFlow(call: S, callee: C, in: IFDSFact, successor: S)(implicit state: State, work: Work): Set[IFDSFact] = {
         var result = Set.empty[IFDSFact]
         val entryFacts = callFlow(call, callee, in)
         for (entryFact ← entryFacts) { // ifds line 14
@@ -320,7 +322,7 @@ class IFDSAnalysis[IFDSFact <: AbstractIFDSFact, C <: AnyRef, S <: Statement[C, 
                 (exitStatement, exitStatementFacts) ← exitFacts // ifds line 15.2
                 exitStatementFact ← exitStatementFacts // ifds line 15.3
             } {
-                result ++= returnFlow(exitStatement, exitStatementFact, call, in)
+                result ++= returnFlow(exitStatement, exitStatementFact, call, in, successor)
             }
         }
         result
@@ -364,11 +366,13 @@ class IFDSAnalysis[IFDSFact <: AbstractIFDSFact, C <: AnyRef, S <: Statement[C, 
     private def normalFlow(statement: S, in: IFDSFact, predecessor: Option[S]): Set[IFDSFact] = {
         statistics.normalFlow += 1
         val out = ifdsProblem.normalFlow(statement, in, predecessor)
-        printf("Normal: %s\n", statement.toString)
-        printf("In: %s\n", in.toString)
-        printf("Out: [")
-        out.foreach(f ⇒ printf("%s, ", f.toString))
-        printf("]\n\n")
+        if (DEBUG) {
+          printf("Normal: %s\n", statement.toString)
+          printf("In: %s\n", in.toString)
+          printf("Out: [")
+          out.foreach(f ⇒ printf("%s, ", f.toString))
+          printf("]\n\n")
+        }
         addNullFactIfConfigured(in, out)
     }
 
@@ -382,11 +386,13 @@ class IFDSAnalysis[IFDSFact <: AbstractIFDSFact, C <: AnyRef, S <: Statement[C, 
     private def callFlow(call: S, callee: C, in: IFDSFact): Set[IFDSFact] = {
         statistics.callFlow += 1
         val out = ifdsProblem.callFlow(call, callee, in)
-        printf("Call: %s\n", call.toString)
-        printf("In: %s\n", in.toString)
-        printf("Out: [")
-        out.foreach(f ⇒ printf("%s, ", f.toString))
-        printf("]\n\n")
+        if (DEBUG) {
+          printf("Call: %s\n", call.toString)
+          printf("In: %s\n", in.toString)
+          printf("Out: [")
+          out.foreach(f ⇒ printf("%s, ", f.toString))
+          printf("]\n\n")
+        }
         addNullFactIfConfigured(in, out)
     }
 
@@ -398,14 +404,16 @@ class IFDSAnalysis[IFDSFact <: AbstractIFDSFact, C <: AnyRef, S <: Statement[C, 
      * @param callFact d4
      * @return
      */
-    private def returnFlow(exit: S, in: IFDSFact, call: S, callFact: IFDSFact): Set[IFDSFact] = {
+    private def returnFlow(exit: S, in: IFDSFact, call: S, callFact: IFDSFact, successor: S): Set[IFDSFact] = {
         statistics.returnFlow += 1
-        val out = ifdsProblem.returnFlow(exit, in, call, callFact)
-        printf("Return: %s\n", call.toString)
-        printf("In: %s\n", in.toString)
-        printf("Out: [")
-        out.foreach(f ⇒ printf("%s, ", f.toString))
-        printf("]\n\n")
+        val out = ifdsProblem.returnFlow(exit, in, call, callFact, successor)
+        if (DEBUG) {
+          printf("Return: %s\n", call.toString)
+          printf("In: %s\n", in.toString)
+          printf("Out: [")
+          out.foreach(f ⇒ printf("%s, ", f.toString))
+          printf("]\n\n")
+        }
         addNullFactIfConfigured(in, out)
     }
 
@@ -415,14 +423,16 @@ class IFDSAnalysis[IFDSFact <: AbstractIFDSFact, C <: AnyRef, S <: Statement[C, 
      * @param in d2
      * @return
      */
-    private def callToReturnFlow(call: S, in: IFDSFact): Set[IFDSFact] = {
+    private def callToReturnFlow(call: S, in: IFDSFact, successor: S): Set[IFDSFact] = {
         statistics.callToReturnFlow += 1
-        val out = ifdsProblem.callToReturnFlow(call, in)
-        printf("CallToReturn: %s\n", call.toString)
-        printf("In: %s\n", in.toString)
-        printf("Out: [")
-        out.foreach(f ⇒ printf("%s, ", f.toString))
-        printf("]\n\n")
+        val out = ifdsProblem.callToReturnFlow(call, in, successor)
+        if (DEBUG) {
+          printf("CallToReturn: %s\n", call.toString)
+          printf("In: %s\n", in.toString)
+          printf("Out: [")
+          out.foreach(f ⇒ printf("%s, ", f.toString))
+          printf("]\n\n")
+        }
         addNullFactIfConfigured(in, out)
     }
 

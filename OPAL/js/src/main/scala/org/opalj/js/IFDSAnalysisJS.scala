@@ -207,7 +207,7 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
         }).filter(_.isDefined).map(_.get)
     }
 
-    override def callToReturnFlow(call: JavaStatement, in: Fact): Set[Fact] = {
+    override def callToReturnFlow(call: JavaStatement, in: Fact, successor: JavaStatement): Set[Fact] = {
         val callStmt = asCall(call.stmt)
         val allParams = callStmt.allParams
         val allParamsWithIndex = callStmt.allParams.zipWithIndex
@@ -227,7 +227,7 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
                     print(sourceSet)
                 case Variable(index) if callStmt.name == "eval" && getParameterIndex(allParamsWithIndex, index) == -3 =>
                     // TODO: Bindings
-                    val sourceSet = varToJavaScriptSource(call.method, allParams(-2).asVar)
+//                    val sourceSet = varToJavaScriptSource(call.method, allParams(-2).asVar)
                 case _ ⇒ // we do not handle this case, thus leave it to the default call semantics
             }
         }

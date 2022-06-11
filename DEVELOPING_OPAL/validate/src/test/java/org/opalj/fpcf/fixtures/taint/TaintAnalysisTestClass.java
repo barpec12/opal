@@ -301,7 +301,6 @@ public class TaintAnalysisTestClass {
         sink(wrapper.field + 1);
     }
 
-    // FIXME: IFDSAnalysis.scala#L323 ?!?
     @ForwardFlowPath({})
     @BackwardFlowPath({})
     public void staticCalleeOverwritesTaint() {
@@ -421,7 +420,6 @@ public class TaintAnalysisTestClass {
     }
 
     private static int sanitize(int i) {return 42;}
-
     private static void overwriteField(Wrapper wrapper) {
         wrapper.field = 42;
     }

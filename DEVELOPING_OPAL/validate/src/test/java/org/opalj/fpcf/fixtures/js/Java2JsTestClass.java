@@ -7,6 +7,10 @@ import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
 
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+
 import static java.lang.Integer.parseInt;
 
 public class Java2JsTestClass {
@@ -25,13 +29,18 @@ public class Java2JsTestClass {
                 se.eval("function check(str) {\n" +
                         "    return str === \"1337\";\n" +
                         "}");
+            } else if (x == 1) {
+                FileReader fr = new FileReader("my_script.js");
+                se.eval(fr);
             } else {
-                se.eval("function check(str) {\n" +
-                        "    return str === \"42\";\n" +
-                        "}");
+                File f = new File("my_other_script.js");
+                FileReader fr = new FileReader(f);
+                se.eval(fr);
             }
         } catch (ScriptException e) {
             // never happens
+        } catch (FileNotFoundException e) {
+            throw new RuntimeException(e);
         }
         String pw = source();
 

@@ -136,7 +136,7 @@ abstract class ForwardTaintProblem(project: SomeProject)
      * If the sanitize method was called, nothing will be tainted.
      */
     override def returnFlow(exit: JavaStatement, in: Fact, call: JavaStatement, callFact: Fact, successor: JavaStatement): Set[Fact] = {
-        if(!isPossibleReturnFlow(exit, successor)) return Set.empty
+        if (!isPossibleReturnFlow(exit, successor)) return Set.empty
 
         val callee = exit.callable()
         /**
@@ -231,7 +231,7 @@ abstract class ForwardTaintProblem(project: SomeProject)
             // and we safely handle it as the identity
             Set(in)
         } else {
-          // Otherwise use the java call semantics
+            // Otherwise use the java call semantics
             in match {
                 // Local variables that are of a reference type flow through the callee
                 case Variable(index) if isRefTypeParam(index) ⇒ Set.empty

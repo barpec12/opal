@@ -5,9 +5,9 @@ import org.opalj.br.{Method, ObjectType}
 import org.opalj.br.analyses.SomeProject
 import org.opalj.collection.immutable.IntTrieSet
 import org.opalj.ifds.Dependees.Getter
-import org.opalj.tac.{Assignment, Call, Expr, ExprStmt, FunctionCall, Stmt}
+import org.opalj.tac.{ASTNode, Assignment, Call, Expr, ExprStmt, MethodCall, Stmt}
 import org.opalj.tac.fpcf.analyses.ifds.{JavaIFDSProblem, JavaMethod, JavaStatement}
-import org.opalj.tac.fpcf.analyses.ifds.taint.{ArrayElement, Fact, FlowFact, ForwardTaintProblem, InstanceField, NullFact, StaticField, Variable}
+import org.opalj.tac.fpcf.analyses.ifds.taint.{ArrayElement, Fact, FlowFact, ForwardTaintProblem, NullFact, Variable}
 
 import scala.collection.mutable
 
@@ -79,8 +79,8 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
     ): Set[Fact] = Set.empty
 
     val scriptEngineMethods: Map[ObjectType, List[String]] = Map(
-      ObjectType("javax/script/Invocable") -> List("invokeFunction"),
-      ObjectType("javax/script/ScriptEngine") -> List("eval", "put")
+        ObjectType("javax/script/Invocable") -> List("invokeFunction"),
+    //        ObjectType("javax/script/ScriptEngine") -> List("eval", "put")
     )
 
     /**
@@ -90,15 +90,15 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
      * @return true if we have a rule for the method call
      */
     def invokesScriptFunction(objType: ObjectType, methodName: String): Boolean =
-      scriptEngineMethods.exists(kv => objType.isSubtypeOf(kv._1)(p.classHierarchy) && kv._2.contains(methodName))
+        scriptEngineMethods.exists(kv ⇒ objType.isSubtypeOf(kv._1)(p.classHierarchy) && kv._2.contains(methodName))
 
     def invokesScriptFunction(callStmt: Call[JavaIFDSProblem.V]): Boolean =
-      invokesScriptFunction(callStmt.declaringClass.mostPreciseObjectType, callStmt.name)
+        invokesScriptFunction(callStmt.declaringClass.mostPreciseObjectType, callStmt.name)
 
     def invokesScriptFunction(method: Method): Boolean =
-      invokesScriptFunction(method.classFile.thisType, method.name)
+        invokesScriptFunction(method.classFile.thisType, method.name)
 
-  /**
+    /**
      * If a parameter is tainted, the result will also be tainted.
      * We assume that the callee does not call the source method.
      */
@@ -149,16 +149,29 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
      * @param stmt
      * @return maybe a function call
      */
-    def maybeCall(stmt: Stmt[JavaIFDSProblem.V]): Option[FunctionCall[JavaIFDSProblem.V]] = {
-        def isCall(expr: Expr[JavaIFDSProblem.V]) = expr.isVirtualFunctionCall || expr.isStaticFunctionCall
+    def maybeCall(stmt: Stmt[JavaIFDSProblem.V]): Option[Call[JavaIFDSProblem.V]] = {
+        def isCall(node: ASTNode[JavaIFDSProblem.V]) = node match {
+            case expr: Expr[JavaIFDSProblem.V] ⇒ expr.isVirtualFunctionCall || expr.isStaticFunctionCall
+            case stmt: Stmt[JavaIFDSProblem.V] ⇒ stmt.isNonVirtualMethodCall || stmt.isVirtualMethodCall || stmt.isStaticMethodCall
+        }
 
         stmt match {
-            case exprStmt: ExprStmt[JavaIFDSProblem.V] if (isCall(exprStmt.expr)) ⇒
+            case exprStmt: ExprStmt[JavaIFDSProblem.V] if isCall(exprStmt.expr) ⇒
                 Some(exprStmt.expr.asFunctionCall)
-            case assignStmt: Assignment[JavaIFDSProblem.V] if (isCall(assignStmt.expr)) ⇒
+            case assignStmt: Assignment[JavaIFDSProblem.V] if isCall(assignStmt.expr) ⇒
                 Some(assignStmt.expr.asFunctionCall)
+            case call: MethodCall[JavaIFDSProblem.V] if isCall(stmt) ⇒
+                Some(call)
             case _ ⇒ None
         }
+    }
+
+    def findCallOnObject(method: Method, sites: IntTrieSet, methodName: String): Set[JavaStatement] = {
+        val jstmts = searchJStmts(method, sites)
+        jstmts.map(jstmt ⇒ maybeCall(jstmt.stmt) match {
+            case Some(call) if (call.name.equals(methodName)) ⇒ Some(jstmt)
+            case _                                            ⇒ None
+        }).filter(_.isDefined).map(_.get)
     }
 
     /**
@@ -173,16 +186,9 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
      * @return javascript source code
      */
     def findJSSourceOnInvokeFunction(method: Method, obj: JavaIFDSProblem.V): Set[JavaScriptSource] = {
-        def findCallOnObject(sites: IntTrieSet, methodName: String): Set[JavaStatement] = {
-            searchJStmts(method, sites).map(jstmt ⇒ maybeCall(jstmt.stmt) match {
-                case Some(call) if (call.name == methodName) ⇒ Some(jstmt)
-                case _                                       ⇒ None
-            }).filter(_.isDefined).map(_.get)
-        }
-
-        val decls = findCallOnObject(obj.definedBy, "getEngineByName")
+        val decls = findCallOnObject(method, obj.definedBy, "getEngineByName")
         decls.flatMap(decl ⇒ {
-            val evals = findCallOnObject(decl.stmt.asAssignment.targetVar.usedBy, "eval")
+            val evals = findCallOnObject(method, decl.stmt.asAssignment.targetVar.usedBy, "eval")
             evals.flatMap(eval ⇒ {
                 val evalCall = asCall(eval.stmt)
                 varToJavaScriptSource(method, evalCall.params.head.asVar)
@@ -197,20 +203,61 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
      * @return JavaScriptSource
      */
     def varToJavaScriptSource(method: Method, variable: JavaIFDSProblem.V): Set[JavaScriptSource] = {
-        val nextJStmts = searchJStmts(method, variable.definedBy)
+        val resultSet: mutable.Set[JavaScriptSource] = mutable.Set()
 
-        // TODO: Find file
-        // TODO: do not give up if it is not a constant
-        nextJStmts.map(jstmt ⇒ jstmt.stmt match {
-            case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst ⇒ Some(JavaScriptStringSource(a.expr.asStringConst.value))
-            case _ ⇒ None
-        }).filter(_.isDefined).map(_.get)
+        def findFileArg(sites: IntTrieSet): Unit = {
+            val calls = findCallOnObject(method, sites, "<init>");
+            calls.foreach(init ⇒ {
+                val defSitesOfFileSrc = init.stmt.asInstanceMethodCall.params.head.asVar.definedBy
+                val defs = searchJStmts(method, defSitesOfFileSrc)
+                defs.foreach(jstmt ⇒ jstmt.stmt match {
+                    // new File("path/to/src");
+                    case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst ⇒
+                        resultSet.add(JavaScriptFileSource(a.expr.asStringConst.value))
+                    // File constructor argument is no string constant
+                    case _ ⇒
+                })
+            })
+        }
+
+        def findFileReaderArg(sites: IntTrieSet): Unit = {
+            val calls = findCallOnObject(method, sites, "<init>");
+            calls.foreach(init ⇒ {
+                val defSitesOfFileReaderSrc = init.stmt.asInstanceMethodCall.params.head.asVar.definedBy
+                val defs = searchJStmts(method, defSitesOfFileReaderSrc);
+                defs.foreach(jstmt2 ⇒ jstmt2.stmt match {
+                    // FileReader fr = new FileReader(new File("path/to/src"));
+                    case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst ⇒
+                        resultSet.add(JavaScriptFileSource(a.expr.asStringConst.value))
+                    // new FileReader(new File(...));
+                    case a: Assignment[JavaIFDSProblem.V] if a.expr.isNew ⇒
+                        if (a.expr.asNew.tpe.isSubtypeOf(ObjectType("java/io/File"))(p.classHierarchy))
+                            findFileArg(a.targetVar.usedBy)
+                    // Unknown argument
+                    case _ ⇒
+                })
+            })
+        }
+
+        val nextJStmts = searchJStmts(method, variable.definedBy)
+        nextJStmts.foreach(jstmt ⇒ jstmt.stmt match {
+            // se.eval("function() ...");
+            case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst ⇒
+                resultSet.add(JavaScriptStringSource(a.expr.asStringConst.value))
+            // se.eval(new FileReader(...));
+            case a: Assignment[JavaIFDSProblem.V] if a.expr.isNew ⇒
+                if (a.expr.asNew.tpe.isSubtypeOf(ObjectType("java/io/FileReader"))(p.classHierarchy))
+                    findFileReaderArg(a.targetVar.usedBy)
+            case _ ⇒
+        })
+
+        resultSet.toSet
     }
 
     override def callToReturnFlow(call: JavaStatement, in: Fact, successor: JavaStatement): Set[Fact] = {
         val callStmt = asCall(call.stmt)
         if (!invokesScriptFunction(callStmt))
-          return super.callToReturnFlow(call, in, successor)
+            return super.callToReturnFlow(call, in, successor)
 
         val allParams = callStmt.allParams
         val allParamsWithIndex = callStmt.allParams.zipWithIndex
@@ -220,9 +267,9 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
             case ArrayElement(index, taintedIndex) if callStmt.name == "invokeFunction" && getParameterIndex(allParamsWithIndex, index) == -3 ⇒
                 val sourceSet = findJSSourceOnInvokeFunction(call.method, allParams.head.asVar)
                 print(sourceSet)
-            case Variable(index) if callStmt.name == "eval" && getParameterIndex(allParamsWithIndex, index) == -3 =>
-                // TODO: Bindings
-                // val sourceSet = varToJavaScriptSource(call.method, allParams(-2).asVar)
+            case Variable(index) if callStmt.name == "eval" && getParameterIndex(allParamsWithIndex, index) == -3 ⇒
+            // TODO: Bindings?
+            // val sourceSet = varToJavaScriptSource(call.method, allParams(-2).asVar)
             case _ ⇒ // we do not handle this case, thus leave it to the default call semantics
         }
 

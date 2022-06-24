@@ -16,6 +16,7 @@ class IFDSAnalysisJSFixtureTest extends PropertiesTest {
     override def fixtureProjectPackage: List[String] = List(
         "org/opalj/fpcf/fixtures/js"
     )
+    override def withRT = true
 
     override def init(p: Project[URL]): Unit = {
         p.updateProjectInformationKeyInitializationData(

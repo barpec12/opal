@@ -201,10 +201,10 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
                 val defSitesOfFileSrc = init.asInstanceMethodCall.params.head.asVar.definedBy
                 val defs = searchStmts(method, defSitesOfFileSrc)
                 defs.foreach {
-                  // new File("path/to/src");
+                  /* new File("path/to/src"); */
                   case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst ⇒
                     resultSet.add(JavaScriptFileSource(a.expr.asStringConst.value))
-                  // File constructor argument is no string constant
+                  /* File constructor argument is no string constant */
                   case _ ⇒
                 }
             })
@@ -216,10 +216,10 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
                 val defSitesOfFileReaderSrc = init.asInstanceMethodCall.params.head.asVar.definedBy
                 val defs = searchStmts(method, defSitesOfFileReaderSrc);
                 defs.foreach {
-                  // FileReader fr = new FileReader(new File("path/to/src"));
+                  /* FileReader fr = new FileReader(new File("path/to/src")); */
                   case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst ⇒
                     resultSet.add(JavaScriptFileSource(a.expr.asStringConst.value))
-                  // new FileReader(new File(...));
+                  /* new FileReader(new File(...)); */
                   case a: Assignment[JavaIFDSProblem.V] if a.expr.isNew ⇒
                     if (a.expr.asNew.tpe.isSubtypeOf(ObjectType("java/io/File"))(p.classHierarchy))
                       findFileArg(a.targetVar.usedBy)
@@ -231,10 +231,10 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
 
         val nextJStmts = searchStmts(method, variable.definedBy)
         nextJStmts.foreach {
-          // se.eval("function() ...");
+          /* se.eval("function() ..."); */
           case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst ⇒
             resultSet.add(JavaScriptStringSource(a.expr.asStringConst.value))
-          // se.eval(new FileReader(...));
+          /* se.eval(new FileReader(...)); */
           case a: Assignment[JavaIFDSProblem.V] if a.expr.isNew ⇒
             if (a.expr.asNew.tpe.isSubtypeOf(ObjectType("java/io/FileReader"))(p.classHierarchy))
               findFileReaderArg(a.targetVar.usedBy)
@@ -256,7 +256,12 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
             // invokeFunction takes a function name and a variable length argument. This is always an array in TACAI.
             case ArrayElement(index, taintedIndex) if callStmt.name == "invokeFunction" && getParameterIndex(allParamsWithIndex, index) == -3 ⇒
                 val sourceSet = findJSSourceOnInvokeFunction(call.method, allParams.head.asVar)
-                print(sourceSet)
+                sourceSet.foreach(source => {
+                  if (source.asString.contains("check") && call.stmt.isAssignment) {
+                    return Set(Variable(call.index))
+                  }
+                })
+//                print(sourceSet)
             case Variable(index) if callStmt.name == "eval" && getParameterIndex(allParamsWithIndex, index) == -3 ⇒
             // TODO: Bindings?
             // val sourceSet = varToJavaScriptSource(call.method, allParams(-2).asVar)

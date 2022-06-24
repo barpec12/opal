@@ -146,7 +146,7 @@ class IFDSAnalysis[IFDSFact <: AbstractIFDSFact, C <: AnyRef, S <: Statement[C, 
     implicit var statistics = new Statistics
     val icfg = ifdsProblem.icfg
 
-    val DEBUG = true
+    val DEBUG = false
 
     /**
      * Performs an IFDS analysis for a method-fact-pair.

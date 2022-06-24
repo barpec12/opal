@@ -5,13 +5,15 @@ import org.opalj.br.{Method, ObjectType}
 import org.opalj.br.analyses.SomeProject
 import org.opalj.collection.immutable.IntTrieSet
 import org.opalj.ifds.Dependees.Getter
-import org.opalj.tac.{ASTNode, Assignment, Call, Expr, ExprStmt, MethodCall, Stmt}
+import org.opalj.tac.{ASTNode, Assignment, Call, ComputeTACAIKey, Expr, ExprStmt, MethodCall, Stmt, TACMethodParameter, TACode}
 import org.opalj.tac.fpcf.analyses.ifds.{JavaIFDSProblem, JavaMethod, JavaStatement}
 import org.opalj.tac.fpcf.analyses.ifds.taint.{ArrayElement, Fact, FlowFact, ForwardTaintProblem, NullFact, Variable}
 
 import scala.collection.mutable
 
 class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
+    final type TACAICode = TACode[TACMethodParameter, JavaIFDSProblem.V]
+    val tacaiKey = p.get(ComputeTACAIKey);
 
     /**
      * Called, when the exit to return facts are computed for some `callee` with the null fact and
@@ -127,21 +129,9 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
      * @param sites  definition or use sites
      * @return sites as JavaStatement
      */
-    def searchJStmts(method: Method, sites: IntTrieSet): Set[JavaStatement] = {
-        var result = Set[JavaStatement]()
-        val worklist = mutable.Stack[JavaStatement]()
-        worklist.pushAll(this.icfg.startStatements(method))
-        var visited = Set[JavaStatement]()
-        while (worklist.nonEmpty) {
-            val stmt = worklist.pop()
-            visited += stmt
-            if (sites.contains(stmt.index)) {
-                result += stmt
-            }
-            val nextToVisit = this.icfg.nextStatements(stmt) -- visited
-            worklist.pushAll(nextToVisit)
-        }
-        result
+    def searchStmts(method: Method, sites: IntTrieSet): Set[Stmt[JavaIFDSProblem.V]] = {
+        val taCode = tacaiKey(method)
+        sites.map(site => taCode.stmts.apply(site))
     }
 
     /**
@@ -166,10 +156,10 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
         }
     }
 
-    def findCallOnObject(method: Method, sites: IntTrieSet, methodName: String): Set[JavaStatement] = {
-        val jstmts = searchJStmts(method, sites)
-        jstmts.map(jstmt ⇒ maybeCall(jstmt.stmt) match {
-            case Some(call) if (call.name.equals(methodName)) ⇒ Some(jstmt)
+    def findCallOnObject(method: Method, sites: IntTrieSet, methodName: String): Set[Stmt[JavaIFDSProblem.V]] = {
+        val stmts = searchStmts(method, sites)
+        stmts.map(stmt ⇒ maybeCall(stmt) match {
+            case Some(call) if (call.name.equals(methodName)) ⇒ Some(stmt)
             case _                                            ⇒ None
         }).filter(_.isDefined).map(_.get)
     }
@@ -188,9 +178,9 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
     def findJSSourceOnInvokeFunction(method: Method, obj: JavaIFDSProblem.V): Set[JavaScriptSource] = {
         val decls = findCallOnObject(method, obj.definedBy, "getEngineByName")
         decls.flatMap(decl ⇒ {
-            val evals = findCallOnObject(method, decl.stmt.asAssignment.targetVar.usedBy, "eval")
+            val evals = findCallOnObject(method, decl.asAssignment.targetVar.usedBy, "eval")
             evals.flatMap(eval ⇒ {
-                val evalCall = asCall(eval.stmt)
+                val evalCall = asCall(eval)
                 varToJavaScriptSource(method, evalCall.params.head.asVar)
             })
         })
@@ -208,48 +198,48 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
         def findFileArg(sites: IntTrieSet): Unit = {
             val calls = findCallOnObject(method, sites, "<init>");
             calls.foreach(init ⇒ {
-                val defSitesOfFileSrc = init.stmt.asInstanceMethodCall.params.head.asVar.definedBy
-                val defs = searchJStmts(method, defSitesOfFileSrc)
-                defs.foreach(jstmt ⇒ jstmt.stmt match {
-                    // new File("path/to/src");
-                    case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst ⇒
-                        resultSet.add(JavaScriptFileSource(a.expr.asStringConst.value))
-                    // File constructor argument is no string constant
-                    case _ ⇒
-                })
+                val defSitesOfFileSrc = init.asInstanceMethodCall.params.head.asVar.definedBy
+                val defs = searchStmts(method, defSitesOfFileSrc)
+                defs.foreach {
+                  // new File("path/to/src");
+                  case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst ⇒
+                    resultSet.add(JavaScriptFileSource(a.expr.asStringConst.value))
+                  // File constructor argument is no string constant
+                  case _ ⇒
+                }
             })
         }
 
         def findFileReaderArg(sites: IntTrieSet): Unit = {
             val calls = findCallOnObject(method, sites, "<init>");
             calls.foreach(init ⇒ {
-                val defSitesOfFileReaderSrc = init.stmt.asInstanceMethodCall.params.head.asVar.definedBy
-                val defs = searchJStmts(method, defSitesOfFileReaderSrc);
-                defs.foreach(jstmt2 ⇒ jstmt2.stmt match {
-                    // FileReader fr = new FileReader(new File("path/to/src"));
-                    case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst ⇒
-                        resultSet.add(JavaScriptFileSource(a.expr.asStringConst.value))
-                    // new FileReader(new File(...));
-                    case a: Assignment[JavaIFDSProblem.V] if a.expr.isNew ⇒
-                        if (a.expr.asNew.tpe.isSubtypeOf(ObjectType("java/io/File"))(p.classHierarchy))
-                            findFileArg(a.targetVar.usedBy)
-                    // Unknown argument
-                    case _ ⇒
-                })
+                val defSitesOfFileReaderSrc = init.asInstanceMethodCall.params.head.asVar.definedBy
+                val defs = searchStmts(method, defSitesOfFileReaderSrc);
+                defs.foreach {
+                  // FileReader fr = new FileReader(new File("path/to/src"));
+                  case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst ⇒
+                    resultSet.add(JavaScriptFileSource(a.expr.asStringConst.value))
+                  // new FileReader(new File(...));
+                  case a: Assignment[JavaIFDSProblem.V] if a.expr.isNew ⇒
+                    if (a.expr.asNew.tpe.isSubtypeOf(ObjectType("java/io/File"))(p.classHierarchy))
+                      findFileArg(a.targetVar.usedBy)
+                  // Unknown argument
+                  case _ ⇒
+                }
             })
         }
 
-        val nextJStmts = searchJStmts(method, variable.definedBy)
-        nextJStmts.foreach(jstmt ⇒ jstmt.stmt match {
-            // se.eval("function() ...");
-            case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst ⇒
-                resultSet.add(JavaScriptStringSource(a.expr.asStringConst.value))
-            // se.eval(new FileReader(...));
-            case a: Assignment[JavaIFDSProblem.V] if a.expr.isNew ⇒
-                if (a.expr.asNew.tpe.isSubtypeOf(ObjectType("java/io/FileReader"))(p.classHierarchy))
-                    findFileReaderArg(a.targetVar.usedBy)
-            case _ ⇒
-        })
+        val nextJStmts = searchStmts(method, variable.definedBy)
+        nextJStmts.foreach {
+          // se.eval("function() ...");
+          case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst ⇒
+            resultSet.add(JavaScriptStringSource(a.expr.asStringConst.value))
+          // se.eval(new FileReader(...));
+          case a: Assignment[JavaIFDSProblem.V] if a.expr.isNew ⇒
+            if (a.expr.asNew.tpe.isSubtypeOf(ObjectType("java/io/FileReader"))(p.classHierarchy))
+              findFileReaderArg(a.targetVar.usedBy)
+          case _ ⇒
+        }
 
         resultSet.toSet
     }

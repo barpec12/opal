@@ -5,15 +5,16 @@ import org.opalj.br.{Method, ObjectType}
 import org.opalj.br.analyses.SomeProject
 import org.opalj.collection.immutable.IntTrieSet
 import org.opalj.ifds.Dependees.Getter
-import org.opalj.tac.{ASTNode, Assignment, Call, ComputeTACAIKey, Expr, ExprStmt, MethodCall, Stmt, TACMethodParameter, TACode}
+import org.opalj.tac.{AITACode, ASTNode, Assignment, Call, ComputeTACAIKey, Expr, ExprStmt, MethodCall, Stmt, TACMethodParameter, TACode}
 import org.opalj.tac.fpcf.analyses.ifds.{JavaIFDSProblem, JavaMethod, JavaStatement}
 import org.opalj.tac.fpcf.analyses.ifds.taint.{ArrayElement, Fact, FlowFact, ForwardTaintProblem, NullFact, Variable}
+import org.opalj.value.ValueInformation
 
 import scala.collection.mutable
 
 class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
     final type TACAICode = TACode[TACMethodParameter, JavaIFDSProblem.V]
-    val tacaiKey = p.get(ComputeTACAIKey);
+    val tacaiKey: Method ⇒ AITACode[TACMethodParameter, ValueInformation] = p.get(ComputeTACAIKey);
 
     /**
      * Called, when the exit to return facts are computed for some `callee` with the null fact and
@@ -82,7 +83,7 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
 
     val scriptEngineMethods: Map[ObjectType, List[String]] = Map(
         ObjectType("javax/script/Invocable") -> List("invokeFunction"),
-    //        ObjectType("javax/script/ScriptEngine") -> List("eval", "put")
+        ObjectType("javax/script/ScriptEngine") -> List("put", "get")
     )
 
     /**
@@ -131,7 +132,7 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
      */
     def searchStmts(method: Method, sites: IntTrieSet): Set[Stmt[JavaIFDSProblem.V]] = {
         val taCode = tacaiKey(method)
-        sites.map(site => taCode.stmts.apply(site))
+        sites.map(site ⇒ taCode.stmts.apply(site))
     }
 
     /**
@@ -201,11 +202,11 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
                 val defSitesOfFileSrc = init.asInstanceMethodCall.params.head.asVar.definedBy
                 val defs = searchStmts(method, defSitesOfFileSrc)
                 defs.foreach {
-                  /* new File("path/to/src"); */
-                  case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst ⇒
-                    resultSet.add(JavaScriptFileSource(a.expr.asStringConst.value))
-                  /* File constructor argument is no string constant */
-                  case _ ⇒
+                    /* new File("path/to/src"); */
+                    case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst ⇒
+                        resultSet.add(JavaScriptFileSource(a.expr.asStringConst.value))
+                    /* File constructor argument is no string constant */
+                    case _ ⇒
                 }
             })
         }
@@ -216,29 +217,29 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
                 val defSitesOfFileReaderSrc = init.asInstanceMethodCall.params.head.asVar.definedBy
                 val defs = searchStmts(method, defSitesOfFileReaderSrc);
                 defs.foreach {
-                  /* FileReader fr = new FileReader(new File("path/to/src")); */
-                  case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst ⇒
-                    resultSet.add(JavaScriptFileSource(a.expr.asStringConst.value))
-                  /* new FileReader(new File(...)); */
-                  case a: Assignment[JavaIFDSProblem.V] if a.expr.isNew ⇒
-                    if (a.expr.asNew.tpe.isSubtypeOf(ObjectType("java/io/File"))(p.classHierarchy))
-                      findFileArg(a.targetVar.usedBy)
-                  // Unknown argument
-                  case _ ⇒
+                    /* FileReader fr = new FileReader(new File("path/to/src")); */
+                    case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst ⇒
+                        resultSet.add(JavaScriptFileSource(a.expr.asStringConst.value))
+                    /* new FileReader(new File(...)); */
+                    case a: Assignment[JavaIFDSProblem.V] if a.expr.isNew ⇒
+                        if (a.expr.asNew.tpe.isSubtypeOf(ObjectType("java/io/File"))(p.classHierarchy))
+                            findFileArg(a.targetVar.usedBy)
+                    // Unknown argument
+                    case _ ⇒
                 }
             })
         }
 
         val nextJStmts = searchStmts(method, variable.definedBy)
         nextJStmts.foreach {
-          /* se.eval("function() ..."); */
-          case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst ⇒
-            resultSet.add(JavaScriptStringSource(a.expr.asStringConst.value))
-          /* se.eval(new FileReader(...)); */
-          case a: Assignment[JavaIFDSProblem.V] if a.expr.isNew ⇒
-            if (a.expr.asNew.tpe.isSubtypeOf(ObjectType("java/io/FileReader"))(p.classHierarchy))
-              findFileReaderArg(a.targetVar.usedBy)
-          case _ ⇒
+            /* se.eval("function() ..."); */
+            case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst ⇒
+                resultSet.add(JavaScriptStringSource(a.expr.asStringConst.value))
+            /* se.eval(new FileReader(...)); */
+            case a: Assignment[JavaIFDSProblem.V] if a.expr.isNew ⇒
+                if (a.expr.asNew.tpe.isSubtypeOf(ObjectType("java/io/FileReader"))(p.classHierarchy))
+                    findFileReaderArg(a.targetVar.usedBy)
+            case _ ⇒
         }
 
         resultSet.toSet
@@ -256,16 +257,52 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
             // invokeFunction takes a function name and a variable length argument. This is always an array in TACAI.
             case ArrayElement(index, taintedIndex) if callStmt.name == "invokeFunction" && getParameterIndex(allParamsWithIndex, index) == -3 ⇒
                 val sourceSet = findJSSourceOnInvokeFunction(call.method, allParams.head.asVar)
-                sourceSet.foreach(source => {
-                  if (source.asString.contains("check") && call.stmt.isAssignment) {
-                    return Set(Variable(call.index))
-                  }
+                sourceSet.foreach(source ⇒ {
+                    // TODO: Call JS analysis
+                    if (source.asString.contains("check") && call.stmt.isAssignment) {
+                        return Set(Variable(call.index))
+                    }
                 })
-//                print(sourceSet)
+            case Variable(index) if callStmt.name == "put" && getParameterIndex(allParamsWithIndex, index) == -3 ⇒
+                val taints = mutable.Set(in)
+                searchStmts(call.method, allParams(1).asVar.definedBy).foreach {
+                    case a: Assignment[JavaIFDSProblem.V] ⇒
+                        val keyName = if (a.expr.isStringConst) a.expr.asStringConst.value else ""
+                        val defSites = callStmt.receiverOption.get.asVar.definedBy
+                        taints ++= defSites.map(i ⇒ BindingFact(i, keyName))
+                    case _ ⇒
+                }
+                return taints.toSet
+            case BindingFact(index, keyName) if callStmt.name == "put" && getParameterIndex(allParamsWithIndex, index) == -1 ⇒
+                if (keyName == "")
+                    return Set(in)
+                val possibleFields = mutable.Set[String]()
+                searchStmts(call.method, allParams(1).asVar.definedBy).foreach {
+                    case a: Assignment[JavaIFDSProblem.V] ⇒
+                        possibleFields.add(if (a.expr.isStringConst) a.expr.asStringConst.value else "")
+                    case _ ⇒
+                }
+                if (possibleFields.size == 1 && possibleFields.contains(keyName))
+                    return Set()
+                else
+                    return Set(in)
+            case BindingFact(index, keyName) if callStmt.name == "get" && getParameterIndex(allParamsWithIndex, index) == -1 ⇒
+                if (keyName == "")
+                    return Set(Variable(call.index), in)
+                searchStmts(call.method, allParams(1).asVar.definedBy).foreach {
+                    case a: Assignment[JavaIFDSProblem.V] ⇒
+                        if ((!a.expr.isStringConst || a.expr.asStringConst.value == keyName)
+                            && call.stmt.isAssignment)
+                            return Set(Variable(call.index), in)
+                    case _ ⇒
+                }
             case Variable(index) if callStmt.name == "eval" && getParameterIndex(allParamsWithIndex, index) == -3 ⇒
             // TODO: Bindings?
-            // val sourceSet = varToJavaScriptSource(call.method, allParams(-2).asVar)
-            case _ ⇒ // we do not handle this case, thus leave it to the default call semantics
+            //             val sourceSet = varToJavaScriptSource(call.method, allParams(2).asVar)
+            case BindingFact(index, keyName) if callStmt.receiverOption.isDefined && callStmt.receiverOption.get.asVar.definedBy.contains(index)
+                && (callStmt.name == "eval" || callStmt.name == "invokeFunction") ⇒
+
+            case _ ⇒ // should be unreachable
         }
 
         Set()

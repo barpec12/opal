@@ -97,5 +97,4 @@ object JavaIFDSProblem {
      */
     def switchParamAndVariableIndex(index: Int, isStaticMethod: Boolean): Int =
         (if (isStaticMethod) -2 else -1) - index
-
 }

@@ -2,6 +2,7 @@
 package org.opalj.js
 
 import java.io.File
+import java.nio.file.Files
 
 trait JavaScriptSource {
     def asString: String
@@ -9,14 +10,15 @@ trait JavaScriptSource {
 }
 
 case class JavaScriptStringSource(source: String) extends JavaScriptSource {
+    lazy val tmpFile: File = Files.createTempFile("opal", ".js").toFile;
+
     override def asString: String = source
 
-    // TODO: create new temp file
-    override def asFile: File = null
+    override def asFile: File = tmpFile
 }
 
 case class JavaScriptFileSource(path: String) extends JavaScriptSource {
-    override def asString: String = ""
+    override def asString: String = path
 
-    override def asFile: File = null
+    override def asFile: File = null;
 }

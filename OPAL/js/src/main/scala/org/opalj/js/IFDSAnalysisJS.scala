@@ -83,7 +83,8 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
 
     val scriptEngineMethods: Map[ObjectType, List[String]] = Map(
         ObjectType("javax/script/Invocable") -> List("invokeFunction"),
-        ObjectType("javax/script/ScriptEngine") -> List("put", "get")
+        ObjectType("javax/script/ScriptEngine") -> List("put", "get"),
+        ObjectType("javax/script/Bindings") -> List("put", "get", "putAll", "remove"),
     )
 
     /**
@@ -263,6 +264,7 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
                         return Set(Variable(call.index))
                     }
                 })
+            /* put obj in Binding */
             case Variable(index) if callStmt.name == "put" && getParameterIndex(allParamsWithIndex, index) == -3 ⇒
                 val taints = mutable.Set(in)
                 searchStmts(call.method, allParams(1).asVar.definedBy).foreach {
@@ -273,6 +275,13 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
                     case _ ⇒
                 }
                 return taints.toSet
+            /* putAll BindingFact to other BindingFact */
+            case BindingFact(index, keyName) if callStmt.name == "putAll" && getParameterIndex(allParamsWithIndex, index) == -2 ⇒
+                callStmt.receiverOption match {
+                    case Some(baseObj) ⇒ return baseObj.asVar.definedBy.map(i ⇒ BindingFact(i, keyName)) ++ Set(in)
+                    case None          ⇒ return Set(in)
+                }
+            /* Overwrite BindingFact */
             case BindingFact(index, keyName) if callStmt.name == "put" && getParameterIndex(allParamsWithIndex, index) == -1 ⇒
                 if (keyName == "")
                     return Set(in)
@@ -286,6 +295,21 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
                     return Set()
                 else
                     return Set(in)
+            /* Remove BindingFact */
+            case BindingFact(index, keyName) if callStmt.name == "remove" && getParameterIndex(allParamsWithIndex, index) == -1 ⇒
+                if (keyName == "")
+                    return Set(in)
+                val possibleFields = mutable.Set[String]()
+                searchStmts(call.method, allParams(1).asVar.definedBy).foreach {
+                    case a: Assignment[JavaIFDSProblem.V] ⇒
+                        possibleFields.add(if (a.expr.isStringConst) a.expr.asStringConst.value else "")
+                    case _ ⇒
+                }
+                if (possibleFields.size == 1 && possibleFields.contains(keyName))
+                    return Set()
+                else
+                    return Set(in)
+            /* get from BindingFact */
             case BindingFact(index, keyName) if callStmt.name == "get" && getParameterIndex(allParamsWithIndex, index) == -1 ⇒
                 if (keyName == "")
                     return Set(Variable(call.index), in)

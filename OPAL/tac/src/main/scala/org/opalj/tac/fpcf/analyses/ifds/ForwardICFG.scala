@@ -5,16 +5,16 @@ import org.opalj.br.{DeclaredMethod, Method}
 import org.opalj.br.analyses.{DeclaredMethods, DeclaredMethodsKey, SomeProject}
 import org.opalj.br.fpcf.PropertyStoreKey
 import org.opalj.fpcf.{FinalEP, PropertyStore}
-import org.opalj.ifds.{AbstractIFDSFact, ICFG}
+import org.opalj.ifds.ICFG
 import org.opalj.tac.cg.TypeProviderKey
 import org.opalj.tac.{Assignment, DUVar, Expr, ExprStmt, LazyDetachedTACAIKey, NonVirtualFunctionCall, NonVirtualMethodCall, StaticFunctionCall, StaticMethodCall, Stmt, TACMethodParameter, TACode, VirtualFunctionCall, VirtualMethodCall}
 import org.opalj.tac.fpcf.analyses.cg.TypeProvider
 import org.opalj.tac.fpcf.properties.cg.Callees
 import org.opalj.value.ValueInformation
 
-class ForwardICFG[IFDSFact <: AbstractIFDSFact](implicit project: SomeProject)
-    extends ICFG[IFDSFact, Method, JavaStatement] {
-    val tacai: Method ⇒ TACode[TACMethodParameter, DUVar[ValueInformation]] = project.get(LazyDetachedTACAIKey)
+class ForwardICFG(implicit project: SomeProject)
+    extends ICFG[Method, JavaStatement] {
+    val tacai: Method => TACode[TACMethodParameter, DUVar[ValueInformation]] = project.get(LazyDetachedTACAIKey)
     val declaredMethods: DeclaredMethods = project.get(DeclaredMethodsKey)
     implicit val propertyStore: PropertyStore = project.get(PropertyStoreKey)
     implicit val typeProvider: TypeProvider = project.get(TypeProviderKey)
@@ -39,9 +39,7 @@ class ForwardICFG[IFDSFact <: AbstractIFDSFact](implicit project: SomeProject)
     override def nextStatements(statement: JavaStatement): Set[JavaStatement] = {
         statement.cfg
             .successors(statement.index)
-            .toChain
-            .map { index ⇒ JavaStatement(statement, index) }
-            .toSet
+            .map { index => JavaStatement(statement, index) }
     }
 
     /**
@@ -53,15 +51,15 @@ class ForwardICFG[IFDSFact <: AbstractIFDSFact](implicit project: SomeProject)
      */
     override def getCalleesIfCallStatement(statement: JavaStatement): Option[collection.Set[Method]] =
         statement.stmt.astID match {
-            case StaticMethodCall.ASTID | NonVirtualMethodCall.ASTID | VirtualMethodCall.ASTID ⇒
+            case StaticMethodCall.ASTID | NonVirtualMethodCall.ASTID | VirtualMethodCall.ASTID =>
                 Some(getCallees(statement))
-            case Assignment.ASTID | ExprStmt.ASTID ⇒
+            case Assignment.ASTID | ExprStmt.ASTID =>
                 getExpression(statement.stmt).astID match {
-                    case StaticFunctionCall.ASTID | NonVirtualFunctionCall.ASTID | VirtualFunctionCall.ASTID ⇒
+                    case StaticFunctionCall.ASTID | NonVirtualFunctionCall.ASTID | VirtualFunctionCall.ASTID =>
                         Some(getCallees(statement))
-                    case _ ⇒ None
+                    case _ => None
                 }
-            case _ ⇒ None
+            case _ => None
         }
 
     /**
@@ -71,18 +69,18 @@ class ForwardICFG[IFDSFact <: AbstractIFDSFact](implicit project: SomeProject)
      * @return The statement's expression.
      */
     private def getExpression(statement: Stmt[_]): Expr[_] = statement.astID match {
-        case Assignment.ASTID ⇒ statement.asAssignment.expr
-        case ExprStmt.ASTID   ⇒ statement.asExprStmt.expr
-        case _                ⇒ throw new UnknownError("Unexpected statement")
+        case Assignment.ASTID => statement.asAssignment.expr
+        case ExprStmt.ASTID   => statement.asExprStmt.expr
+        case _                => throw new UnknownError("Unexpected statement")
     }
 
     private def getCallees(statement: JavaStatement): collection.Set[Method] = {
-        val pc = statement.code(statement.index).pc
+        val pc = statement.stmt.pc
         val caller = declaredMethods(statement.callable)
         val ep = propertyStore(caller, Callees.key)
         ep match {
-            case FinalEP(_, p) ⇒ definedMethods(p.directCallees(typeProvider.newContext(caller), pc).map(_.method))
-            case _ ⇒
+            case FinalEP(_, p) => definedMethods(p.directCallees(typeProvider.newContext(caller), pc).map(_.method))
+            case _ =>
                 throw new IllegalStateException(
                     "call graph must be computed before the analysis starts"
                 )
@@ -104,14 +102,14 @@ class ForwardICFG[IFDSFact <: AbstractIFDSFact](implicit project: SomeProject)
         val result = scala.collection.mutable.Set.empty[Method]
         declaredMethods
             .filter(
-                declaredMethod ⇒
+                declaredMethod =>
                     declaredMethod.hasSingleDefinedMethod ||
                         declaredMethod.hasMultipleDefinedMethods
             )
             .foreach(
-                declaredMethod ⇒
+                declaredMethod =>
                     declaredMethod
-                        .foreachDefinedMethod(defineMethod ⇒ result.add(defineMethod))
+                        .foreachDefinedMethod(defineMethod => result.add(defineMethod))
             )
         result
     }

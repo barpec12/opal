@@ -4,7 +4,6 @@ package org.opalj.ll.llvm.value
 import org.bytedeco.llvm.LLVM.{LLVMBasicBlockRef, LLVMValueRef}
 import org.bytedeco.llvm.global.LLVM._
 import org.opalj.graphs.Node
-import org.opalj.ll.llvm.value
 
 case class BasicBlock(block_ref: LLVMBasicBlockRef)
     extends Value(LLVMBasicBlockAsValue(block_ref))
@@ -14,13 +13,13 @@ case class BasicBlock(block_ref: LLVMBasicBlockRef)
     def firstInstruction: Instruction = Instruction(LLVMGetFirstInstruction(block_ref))
     def lastInstruction: Instruction = Instruction(LLVMGetLastInstruction(block_ref))
 
-    def terminator(): Option[Instruction with value.Terminator] = {
+    def terminator: Option[Instruction with Terminator] = {
         OptionalInstruction(LLVMGetBasicBlockTerminator(block_ref)) match {
-            case Some(terminator) ⇒ {
+            case Some(terminator) => {
                 assert(terminator.isTerminator)
-                Some(terminator.asInstanceOf[Instruction with value.Terminator])
+                Some(terminator.asInstanceOf[Instruction with Terminator])
             }
-            case None ⇒ None
+            case None => None
         }
     }
 
@@ -46,16 +45,16 @@ case class BasicBlock(block_ref: LLVMBasicBlockRef)
      * Returns `true` if this node has successor nodes.
      */
     override def hasSuccessors: Boolean = terminator match {
-        case Some(t) ⇒ t.hasSuccessors
-        case None    ⇒ false
+        case Some(t) => t.hasSuccessors
+        case None    => false
     }
 
     /**
      * Applies the given function for each successor node.
      */
-    override def foreachSuccessor(f: Node ⇒ Unit): Unit = terminator match {
-        case Some(t) ⇒ t.foreachSuccessor(f)
-        case None    ⇒
+    override def foreachSuccessor(f: Node => Unit): Unit = terminator match {
+        case Some(t) => t.foreachSuccessor(f)
+        case None    =>
     }
 }
 

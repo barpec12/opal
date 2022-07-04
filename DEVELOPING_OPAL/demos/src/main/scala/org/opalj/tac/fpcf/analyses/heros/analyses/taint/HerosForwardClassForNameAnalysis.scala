@@ -19,7 +19,7 @@ import org.opalj.util.Milliseconds
 import java.io.File
 import java.util
 import java.util.Collections
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 /**
  * An implementation of the ForwardClassForNameAnalysis in the Heros framework.
@@ -30,12 +30,12 @@ import scala.collection.JavaConverters._
 class HerosForwardClassForNameAnalysis(
         p:              SomeProject,
         icfg:           OpalForwardICFG,
-        initialMethods: Map[Method, util.Set[Fact]]
+        initialMethods: Map[Method, util.Set[TaintFact]]
 ) extends HerosTaintAnalysis(p, icfg) {
 
-    override val initialSeeds: util.Map[JavaStatement, util.Set[Fact]] = {
-        var result: Map[JavaStatement, util.Set[Fact]] = Map.empty
-        for ((m, facts) ← initialMethods) {
+    override val initialSeeds: util.Map[JavaStatement, util.Set[TaintFact]] = {
+        var result: Map[JavaStatement, util.Set[TaintFact]] = Map.empty
+        for ((m, facts) <- initialMethods) {
             result += icfg.getStartPointsOf(m).iterator().next() -> facts
         }
         result.asJava
@@ -45,76 +45,76 @@ class HerosForwardClassForNameAnalysis(
 
     var flowFacts = Map.empty[Method, Set[FlowFact]]
 
-    override def createFlowFunctionsFactory(): FlowFunctions[JavaStatement, Fact, Method] = {
+    override def createFlowFunctionsFactory(): FlowFunctions[JavaStatement, TaintFact, Method] = {
 
-        new FlowFunctions[JavaStatement, Fact, Method]() {
+        new FlowFunctions[JavaStatement, TaintFact, Method]() {
 
-            override def getNormalFlowFunction(stmt: JavaStatement, succ: JavaStatement): FlowFunction[Fact] = {
+            override def getNormalFlowFunction(stmt: JavaStatement, succ: JavaStatement): FlowFunction[TaintFact] = {
                 stmt.stmt.astID match {
-                    case Assignment.ASTID ⇒
+                    case Assignment.ASTID =>
                         handleAssignment(stmt, stmt.stmt.asAssignment.expr)
-                    case ArrayStore.ASTID ⇒
+                    case ArrayStore.ASTID =>
                         val store = stmt.stmt.asArrayStore
                         val definedBy = store.arrayRef.asVar.definedBy
                         val index = TaintProblem.getIntConstant(store.index, stmt.code)
-                        (source: Fact) ⇒ {
+                        (source: TaintFact) => {
                             if (isTainted(store.value, source)) {
                                 if (index.isDefined) {
-                                    (definedBy.iterator.map[Fact](ArrayElement(_, index.get)).toSet + source).asJava
+                                    (definedBy.iterator.map[TaintFact](ArrayElement(_, index.get)).toSet + source).asJava
                                 } else {
-                                    (definedBy.iterator.map[Fact](Variable).toSet + source).asJava
+                                    (definedBy.iterator.map[TaintFact](Variable).toSet + source).asJava
                                 }
                             } else {
                                 if (index.isDefined && definedBy.size == 1) {
                                     val idx = index.get
                                     val arrayDefinedBy = definedBy.head
                                     source match {
-                                        case ArrayElement(`arrayDefinedBy`, `idx`) ⇒ Collections.emptySet()
-                                        case _                                     ⇒ Collections.singleton(source)
+                                        case ArrayElement(`arrayDefinedBy`, `idx`) => Collections.emptySet()
+                                        case _                                     => Collections.singleton(source)
                                     }
                                 } else Collections.singleton(source)
                             }
                         }
-                    case PutStatic.ASTID ⇒
+                    case PutStatic.ASTID =>
                         val put = stmt.stmt.asPutStatic
-                        (source: Fact) ⇒ {
+                        (source: TaintFact) => {
                             if (isTainted(put.value, source))
                                 TwoElementSet.twoElementSet(source, StaticField(put.declaringClass, put.name))
                             else Collections.singleton(source)
                         }
-                    case PutField.ASTID ⇒
+                    case PutField.ASTID =>
                         val put = stmt.stmt.asPutField
                         val definedBy = put.objRef.asVar.definedBy
-                        (source: Fact) ⇒ {
+                        (source: TaintFact) => {
                             if (isTainted(put.value, source)) {
                                 (definedBy.iterator
                                     .map(InstanceField(_, put.declaringClass, put.name))
-                                    .toSet[Fact] + source).asJava
+                                    .toSet[TaintFact] + source).asJava
                             } else {
                                 Collections.singleton(source)
                             }
                         }
-                    case _ ⇒ Identity.v()
+                    case _ => Identity.v()
                 }
             }
 
-            def handleAssignment(stmt: JavaStatement, expr: Expr[V]): FlowFunction[Fact] =
+            def handleAssignment(stmt: JavaStatement, expr: Expr[V]): FlowFunction[TaintFact] =
                 expr.astID match {
-                    case Var.ASTID ⇒
-                        (source: Fact) ⇒ {
+                    case Var.ASTID =>
+                        (source: TaintFact) => {
                             source match {
-                                case Variable(index) if expr.asVar.definedBy.contains(index) ⇒
+                                case Variable(index) if expr.asVar.definedBy.contains(index) =>
                                     TwoElementSet.twoElementSet(source, Variable(stmt.index))
-                                case _ ⇒ Collections.singleton(source)
+                                case _ => Collections.singleton(source)
                             }
                         }
-                    case ArrayLoad.ASTID ⇒
+                    case ArrayLoad.ASTID =>
                         val load = expr.asArrayLoad
                         val arrayDefinedBy = load.arrayRef.asVar.definedBy
-                        (source: Fact) ⇒ {
+                        (source: TaintFact) => {
                             source match {
                                 // The specific array element may be tainted
-                                case ArrayElement(index, taintedIndex) ⇒
+                                case ArrayElement(index, taintedIndex) =>
                                     val arrIndex = TaintProblem.getIntConstant(load.index, stmt.code)
                                     if (arrayDefinedBy.contains(index) &&
                                         (arrIndex.isEmpty || taintedIndex == arrIndex.get))
@@ -122,39 +122,39 @@ class HerosForwardClassForNameAnalysis(
                                     else
                                         Collections.singleton(source)
                                 // Or the whole array
-                                case Variable(index) if arrayDefinedBy.contains(index) ⇒
+                                case Variable(index) if arrayDefinedBy.contains(index) =>
                                     TwoElementSet.twoElementSet(source, Variable(stmt.index))
-                                case _ ⇒ Collections.singleton(source)
+                                case _ => Collections.singleton(source)
                             }
                         }
-                    case GetStatic.ASTID ⇒
+                    case GetStatic.ASTID =>
                         val get = expr.asGetStatic
-                        (source: Fact) ⇒ {
+                        (source: TaintFact) => {
                             if (source == StaticField(get.declaringClass, get.name))
                                 TwoElementSet.twoElementSet(source, Variable(stmt.index))
                             else Collections.singleton(source)
                         }
-                    case GetField.ASTID ⇒
+                    case GetField.ASTID =>
                         val get = expr.asGetField
                         val objectDefinedBy = get.objRef.asVar.definedBy
-                        (source: Fact) ⇒ {
+                        (source: TaintFact) => {
                             source match {
                                 // The specific field may be tainted
-                                case InstanceField(index, _, taintedField) if taintedField == get.name && objectDefinedBy.contains(index) ⇒
+                                case InstanceField(index, _, taintedField) if taintedField == get.name && objectDefinedBy.contains(index) =>
                                     TwoElementSet.twoElementSet(source, Variable(stmt.index))
                                 // Or the whole object
-                                case Variable(index) if objectDefinedBy.contains(index) ⇒
+                                case Variable(index) if objectDefinedBy.contains(index) =>
                                     TwoElementSet.twoElementSet(source, Variable(stmt.index))
-                                case _ ⇒ Collections.singleton(source)
+                                case _ => Collections.singleton(source)
                             }
                         }
                     case BinaryExpr.ASTID | PrefixExpr.ASTID | Compare.ASTID | PrimitiveTypecastExpr.ASTID |
-                        NewArray.ASTID | ArrayLength.ASTID ⇒
-                        (source: Fact) ⇒ {
-                            val result = new util.HashSet[Fact]
+                        NewArray.ASTID | ArrayLength.ASTID =>
+                        (source: TaintFact) => {
+                            val result = new util.HashSet[TaintFact]
                             (0 until expr.subExprCount)
                                 .foreach(
-                                    subExpression ⇒
+                                    subExpression =>
                                         result.addAll(
                                             handleAssignment(stmt, expr.subExpr(subExpression))
                                                 .computeTargets(source)
@@ -162,39 +162,39 @@ class HerosForwardClassForNameAnalysis(
                                 )
                             result
                         }
-                    case _ ⇒ Identity.v()
+                    case _ => Identity.v()
                 }
 
-            override def getCallFlowFunction(stmt: JavaStatement, callee: Method): FlowFunction[Fact] = {
+            override def getCallFlowFunction(stmt: JavaStatement, callee: Method): FlowFunction[TaintFact] = {
                 val callObject = asCall(stmt.stmt)
                 val allParams = callObject.allParams
                 if (relevantCallee(callee)) {
                     val allParamsWithIndices = allParams.zipWithIndex
-                    source: Fact ⇒
+                    source: TaintFact =>
                         (source match {
-                            case Variable(index) ⇒ // Taint formal parameter if actual parameter is tainted
+                            case Variable(index) => // Taint formal parameter if actual parameter is tainted
                                 allParamsWithIndices
                                     .collect {
-                                        case (param, paramIdx) if param.asVar.definedBy.contains(index) ⇒
+                                        case (param, paramIdx) if param.asVar.definedBy.contains(index) =>
                                             Variable(
                                                 JavaIFDSProblem.switchParamAndVariableIndex(paramIdx, callee.isStatic)
                                             )
                                     }
-                                    .toSet[Fact]
+                                    .toSet[TaintFact]
 
-                            case ArrayElement(index, taintedIndex) ⇒
+                            case ArrayElement(index, taintedIndex) =>
                                 // Taint element of formal parameter if element of actual parameter is tainted
                                 allParamsWithIndices
                                     .collect {
-                                        case (param, paramIdx) if param.asVar.definedBy.contains(index) ⇒
+                                        case (param, paramIdx) if param.asVar.definedBy.contains(index) =>
                                             ArrayElement(
                                                 JavaIFDSProblem.switchParamAndVariableIndex(paramIdx, callee.isStatic),
                                                 taintedIndex
                                             )
                                     }
-                                    .toSet[Fact]
+                                    .toSet[TaintFact]
 
-                            case InstanceField(index, declClass, taintedField) ⇒
+                            case InstanceField(index, declClass, taintedField) =>
                                 // Taint field of formal parameter if field of actual parameter is tainted
                                 // Only if the formal parameter is of a type that may have that field!
                                 allParamsWithIndices
@@ -204,16 +204,16 @@ class HerosForwardClassForNameAnalysis(
                                                 paramIdx,
                                                 callee.isStatic
                                             ) != -1 ||
-                                                classHierarchy.isSubtypeOf(declClass, callee.classFile.thisType)) ⇒
+                                                classHierarchy.isSubtypeOf(declClass, callee.classFile.thisType)) =>
                                             InstanceField(
                                                 JavaIFDSProblem.switchParamAndVariableIndex(paramIdx, callee.isStatic),
                                                 declClass,
                                                 taintedField
                                             )
                                     }
-                                    .toSet[Fact]
-                            case sf: StaticField ⇒ Set(sf).asInstanceOf[Set[Fact]]
-                            case _               ⇒ Set.empty[Fact]
+                                    .toSet[TaintFact]
+                            case sf: StaticField => Set(sf).asInstanceOf[Set[TaintFact]]
+                            case _               => Set.empty[TaintFact]
                         }).asJava
                 } else KillAll.v()
             }
@@ -223,33 +223,20 @@ class HerosForwardClassForNameAnalysis(
                 callee: Method,
                 exit:   JavaStatement,
                 succ:   JavaStatement
-            ): FlowFunction[Fact] = {
-
-                def isRefTypeParam(index: Int): Boolean =
-                    if (index == -1) true
-                    else {
-                        val parameterOffset = if (callee.isStatic) 0 else 1
-                        callee.descriptor
-                            .parameterType(
-                                JavaIFDSProblem.switchParamAndVariableIndex(index, callee.isStatic)
-                                    - parameterOffset
-                            )
-                            .isReferenceType
-                    }
-
+            ): FlowFunction[TaintFact] = {
                 val callStatement = asCall(stmt.stmt)
                 val allParams = callStatement.allParams
 
-                source: Fact ⇒ {
+                source: TaintFact => {
                     val paramFacts = source match {
 
-                        case Variable(index) if index < 0 && index > -100 && isRefTypeParam(index) ⇒
+                        case Variable(index) if index < 0 && index > -100 && JavaIFDSProblem.isRefTypeParam(callee, index) =>
                             val params = allParams(
                                 JavaIFDSProblem.switchParamAndVariableIndex(index, callee.isStatic)
                             )
                             params.asVar.definedBy.iterator.map(Variable).toSet
 
-                        case ArrayElement(index, taintedIndex) if index < 0 && index > -100 ⇒
+                        case ArrayElement(index, taintedIndex) if index < 0 && index > -100 =>
                             // Taint element of actual parameter if element of formal parameter is tainted
                             val params =
                                 asCall(stmt.stmt).allParams(
@@ -257,20 +244,20 @@ class HerosForwardClassForNameAnalysis(
                                 )
                             params.asVar.definedBy.iterator
                                 .map(ArrayElement(_, taintedIndex))
-                                .asInstanceOf[Iterator[Fact]]
+                                .asInstanceOf[Iterator[TaintFact]]
                                 .toSet
 
-                        case InstanceField(index, declClass, taintedField) if index < 0 && index > -10 ⇒
+                        case InstanceField(index, declClass, taintedField) if index < 0 && index > -10 =>
                             // Taint field of actual parameter if field of formal parameter is tainted
                             val params =
                                 allParams(JavaIFDSProblem.switchParamAndVariableIndex(index, callee.isStatic))
                             params.asVar.definedBy.iterator
                                 .map(InstanceField(_, declClass, taintedField))
-                                .asInstanceOf[Iterator[Fact]]
+                                .asInstanceOf[Iterator[TaintFact]]
                                 .toSet
 
-                        case sf: StaticField ⇒ Set(sf)
-                        case FlowFact(flow) if !flow.contains(stmt.method) ⇒
+                        case sf: StaticField => Set(sf)
+                        case FlowFact(flow) =>
                             val flowFact = FlowFact(JavaMethod(stmt.method) +: flow)
                             if (initialMethods.contains(stmt.method))
                                 flowFacts = flowFacts.updated(
@@ -278,7 +265,7 @@ class HerosForwardClassForNameAnalysis(
                                     flowFacts.getOrElse(stmt.method, Set.empty[FlowFact]) + flowFact
                                 )
                             Set(flowFact)
-                        case _ ⇒
+                        case _ =>
                             Set.empty
                     }
 
@@ -286,13 +273,13 @@ class HerosForwardClassForNameAnalysis(
                         if (exit.stmt.astID == ReturnValue.ASTID && stmt.stmt.astID == Assignment.ASTID) {
                             val returnValueDefinedBy = exit.stmt.asReturnValue.expr.asVar.definedBy
                             source match {
-                                case Variable(index) if returnValueDefinedBy.contains(index) ⇒
+                                case Variable(index) if returnValueDefinedBy.contains(index) =>
                                     Some(Variable(stmt.index))
-                                case ArrayElement(index, taintedIndex) if returnValueDefinedBy.contains(index) ⇒
+                                case ArrayElement(index, taintedIndex) if returnValueDefinedBy.contains(index) =>
                                     Some(ArrayElement(stmt.index, taintedIndex))
-                                case InstanceField(index, declClass, taintedField) if returnValueDefinedBy.contains(index) ⇒
+                                case InstanceField(index, declClass, taintedField) if returnValueDefinedBy.contains(index) =>
                                     Some(InstanceField(stmt.index, declClass, taintedField))
-                                case _ ⇒ None
+                                case _ => None
                             }
                         } else None
 
@@ -307,8 +294,8 @@ class HerosForwardClassForNameAnalysis(
                             Some(flowFact)
                         } else None
 
-                    val allFacts = paramFacts ++ returnFact.asInstanceOf[Option[Fact]] ++
-                        flowFact.asInstanceOf[Option[Fact]]
+                    val allFacts = paramFacts ++ returnFact.asInstanceOf[Option[TaintFact]] ++
+                        flowFact.asInstanceOf[Option[TaintFact]]
 
                     allFacts.asJava
                 }
@@ -317,7 +304,7 @@ class HerosForwardClassForNameAnalysis(
             override def getCallToReturnFlowFunction(
                 stmt: JavaStatement,
                 succ: JavaStatement
-            ): FlowFunction[Fact] =
+            ): FlowFunction[TaintFact] =
                 Identity.v()
         }
     }
@@ -325,20 +312,20 @@ class HerosForwardClassForNameAnalysis(
     /**
      * Returns true if the expression contains a taint.
      */
-    private def isTainted(expr: Expr[V], in: Fact): Boolean = {
+    private def isTainted(expr: Expr[V], in: TaintFact): Boolean = {
         expr.isVar && (in match {
-            case Variable(source)            ⇒ expr.asVar.definedBy.contains(source)
-            case ArrayElement(source, _)     ⇒ expr.asVar.definedBy.contains(source)
-            case InstanceField(source, _, _) ⇒ expr.asVar.definedBy.contains(source)
-            case _                           ⇒ false
+            case Variable(source)            => expr.asVar.definedBy.contains(source)
+            case ArrayElement(source, _)     => expr.asVar.definedBy.contains(source)
+            case InstanceField(source, _, _) => expr.asVar.definedBy.contains(source)
+            case _                           => false
         })
     }
 
     private def relevantCallee(callee: Method): Boolean =
         callee.descriptor.parameterTypes.exists {
-            case ObjectType.Object ⇒ true
-            case ObjectType.String ⇒ true
-            case _                 ⇒ false
+            case ObjectType.Object => true
+            case ObjectType.String => true
+            case _                 => false
         } && (!HerosAnalysis.canBeCalledFromOutside(callee) || isClassForName(callee))
 
     private def isClassForName(method: Method): Boolean =
@@ -346,24 +333,24 @@ class HerosForwardClassForNameAnalysis(
 }
 
 class HerosForwardClassForNameAnalysisRunner
-    extends HerosAnalysisRunner[Fact, HerosForwardClassForNameAnalysis] {
+    extends HerosAnalysisRunner[TaintFact, HerosForwardClassForNameAnalysis] {
 
     override protected def createAnalysis(p: SomeProject): HerosForwardClassForNameAnalysis = {
         val declaredMethods = p.get(DeclaredMethodsKey)
         val propertyStore = p.get(PropertyStoreKey)
-        val initialMethods = scala.collection.mutable.Map.empty[Method, util.Set[Fact]]
+        val initialMethods = scala.collection.mutable.Map.empty[Method, util.Set[TaintFact]]
         for {
-            method ← declaredMethods.declaredMethods
+            method <- declaredMethods.declaredMethods
                 .filter(canBeCalledFromOutside(_, propertyStore))
                 .map(_.definedMethod)
-            index ← method.descriptor.parameterTypes.zipWithIndex.collect {
-                case (pType, index) if pType == ObjectType.String ⇒
+            index <- method.descriptor.parameterTypes.zipWithIndex.collect {
+                case (pType, index) if pType == ObjectType.String =>
                     index
             }
         } {
             val fact = Variable(-2 - index)
             if (initialMethods.contains(method)) initialMethods(method).add(fact)
-            else initialMethods += (method -> new util.HashSet[Fact](Collections.singleton(fact)))
+            else initialMethods += (method -> new util.HashSet[TaintFact](Collections.singleton(fact)))
         }
         new HerosForwardClassForNameAnalysis(p, new OpalForwardICFG(p), initialMethods.toMap)
     }
@@ -373,8 +360,8 @@ class HerosForwardClassForNameAnalysisRunner
         analysisTime: Milliseconds
     ): Unit = {
         for {
-            method ← analysis.flowFacts.keys
-            fact ← analysis.flowFacts(method)
+            method <- analysis.flowFacts.keys
+            fact <- analysis.flowFacts(method)
         } println(s"flow: "+fact.flow.map(_.signature).mkString(", "))
         println(s"Time: $analysisTime")
     }

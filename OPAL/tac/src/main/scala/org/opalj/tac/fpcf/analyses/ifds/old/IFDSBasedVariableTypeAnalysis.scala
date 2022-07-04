@@ -41,10 +41,11 @@ object IFDSBasedVariableTypeAnalysisScheduler extends IFDSAnalysisScheduler[VTAF
 /**
  * The IFDSProperty for this analysis.
  */
-case class VTAResult(flows: Map[DeclaredMethodJavaStatement, Set[VTAFact]]) extends IFDSProperty[DeclaredMethodJavaStatement, VTAFact] {
+case class VTAResult(flows: Map[DeclaredMethodJavaStatement, Set[VTAFact]], debugData: Map[DeclaredMethodJavaStatement, Set[VTAFact]] = Map.empty) extends IFDSProperty[DeclaredMethodJavaStatement, VTAFact] {
 
     override type Self = VTAResult
     override def create(result: Map[DeclaredMethodJavaStatement, Set[VTAFact]]): IFDSProperty[DeclaredMethodJavaStatement, VTAFact] = new VTAResult(result)
+    override def create(result: Map[DeclaredMethodJavaStatement, Set[VTAFact]], debugData: Map[DeclaredMethodJavaStatement, Set[VTAFact]]): IFDSProperty[DeclaredMethodJavaStatement, VTAFact] = new VTAResult(result, debugData)
 
     override def key: PropertyKey[VTAResult] = VTAResult.key
 }
@@ -53,6 +54,7 @@ object VTAResult extends IFDSPropertyMetaInformation[DeclaredMethodJavaStatement
 
     override type Self = VTAResult
     override def create(result: Map[DeclaredMethodJavaStatement, Set[VTAFact]]): IFDSProperty[DeclaredMethodJavaStatement, VTAFact] = new VTAResult(result)
+    override def create(result: Map[DeclaredMethodJavaStatement, Set[VTAFact]], debugData: Map[DeclaredMethodJavaStatement, Set[VTAFact]]): IFDSProperty[DeclaredMethodJavaStatement, VTAFact] = new VTAResult(result, debugData)
 
     val key: PropertyKey[VTAResult] = PropertyKey.create("VTA", new VTAResult(Map.empty))
 }
@@ -67,8 +69,8 @@ class IFDSBasedVariableTypeAnalysisRunner extends AbsractIFDSAnalysisRunner {
         analysis: AbstractIFDSAnalysis[_]
     ): Option[Object] =
         analysis match {
-            case subsuming: Subsuming[_, _] ⇒ Some(subsuming.numberOfSubsumptions)
-            case _                          ⇒ None
+            case subsuming: Subsuming[_, _] => Some(subsuming.numberOfSubsumptions)
+            case _                          => None
         }
 
     override protected def writeAdditionalEvaluationResultsToFile(

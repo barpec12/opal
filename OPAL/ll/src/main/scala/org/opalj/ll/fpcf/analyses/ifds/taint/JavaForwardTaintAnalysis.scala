@@ -7,9 +7,9 @@ import org.opalj.fpcf._
 import org.opalj.ifds.Dependees.Getter
 import org.opalj.ifds.{IFDSAnalysis, IFDSAnalysisScheduler, IFDSProperty, IFDSPropertyMetaInformation}
 import org.opalj.ll.LLVMProjectKey
-import org.opalj.ll.fpcf.analyses.ifds.LLVMStatement
+import org.opalj.ll.fpcf.analyses.ifds.{LLVMFunction, LLVMStatement}
 import org.opalj.ll.fpcf.properties.NativeTaint
-import org.opalj.ll.llvm.value.{Function, Ret}
+import org.opalj.ll.llvm.value.Ret
 import org.opalj.tac.Assignment
 import org.opalj.tac.fpcf.analyses.ifds.taint._
 import org.opalj.tac.fpcf.analyses.ifds.{JavaIFDSProblem, JavaMethod, JavaStatement}
@@ -21,10 +21,9 @@ class SimpleJavaForwardTaintProblem(p: SomeProject) extends ForwardTaintProblem(
     /**
      * The analysis starts with all public methods in TaintAnalysisTestClass.
      */
-    override val entryPoints: Seq[(Method, Fact)] = (for {
-        m ← p.allMethodsWithBody
-        if (m.name == "main")
-    } yield m -> NullFact)
+    override val entryPoints: Seq[(Method, TaintFact)] = for {
+        m <- p.allMethodsWithBody
+    } yield m -> TaintNullFact
 
     /**
      * The sanitize method is a sanitizer.
@@ -35,12 +34,12 @@ class SimpleJavaForwardTaintProblem(p: SomeProject) extends ForwardTaintProblem(
     /**
      * We do not sanitize parameters.
      */
-    override protected def sanitizesParameter(call: JavaStatement, in: Fact): Boolean = false
+    override protected def sanitizesParameter(call: JavaStatement, in: TaintFact): Boolean = false
 
     /**
      * Creates a new variable fact for the callee, if the source was called.
      */
-    override protected def createTaints(callee: Method, call: JavaStatement): Set[Fact] =
+    override protected def createTaints(callee: Method, call: JavaStatement): Set[TaintFact] =
         if (callee.name == "source") Set(Variable(call.index))
         else Set.empty
 
@@ -51,7 +50,7 @@ class SimpleJavaForwardTaintProblem(p: SomeProject) extends ForwardTaintProblem(
     override protected def createFlowFact(
         callee: Method,
         call:   JavaStatement,
-        in:     Fact
+        in:     TaintFact
     ): Option[FlowFact] =
         if (callee.name == "sink" && in == Variable(-2))
             Some(FlowFact(Seq(JavaMethod(call.method), JavaMethod(callee))))
@@ -59,26 +58,33 @@ class SimpleJavaForwardTaintProblem(p: SomeProject) extends ForwardTaintProblem(
 
     // Multilingual additions here
     override def outsideAnalysisContext(callee: Method): Option[OutsideAnalysisContextHandler] = {
-        def handleNativeMethod(call: JavaStatement, successor: JavaStatement, in: Fact, dependeesGetter: Getter): Set[Fact] = {
+        def handleNativeMethod(call: JavaStatement, successor: JavaStatement, in: TaintFact, dependeesGetter: Getter): Set[TaintFact] = {
             // https://docs.oracle.com/en/java/javase/13/docs/specs/jni/design.html#resolving-native-method-names
-            val nativeFunctionName = "Java_"+callee.classFile.fqn+"_"+callee.name
-            val function = llvmProject.function(nativeFunctionName).get
-            var result = Set.empty[Fact]
+            val calleeName = callee.name.map(c => c match {
+                case c if isAlphaNumeric(c) => c
+                case '_'                    => "_1"
+                case ';'                    => "_2"
+                case '['                    => "_3"
+                case c                      => s"_${c.toInt.toHexString.reverse.padTo(4, '0').reverse}"
+            }).mkString
+            val nativeFunctionName = "Java_"+callee.classFile.fqn+"_"+calleeName
+            val function = LLVMFunction(llvmProject.function(nativeFunctionName).get)
+            var result = Set.empty[TaintFact]
             val entryFacts = nativeCallFlow(call, function, in, callee)
-            for (entryFact ← entryFacts) { // ifds line 14
+            for (entryFact <- entryFacts) { // ifds line 14
                 val e = (function, entryFact)
-                val exitFacts: Map[LLVMStatement, Set[NativeFact]] =
-                    dependeesGetter(e, NativeTaint.key).asInstanceOf[EOptionP[(LLVMStatement, NativeFact), IFDSProperty[LLVMStatement, NativeFact]]] match {
-                        case ep: FinalEP[_, IFDSProperty[LLVMStatement, NativeFact]] ⇒
+                val exitFacts: Map[LLVMStatement, Set[NativeTaintFact]] =
+                    dependeesGetter(e, NativeTaint.key).asInstanceOf[EOptionP[(LLVMStatement, NativeTaintFact), IFDSProperty[LLVMStatement, NativeTaintFact]]] match {
+                        case ep: FinalEP[_, IFDSProperty[LLVMStatement, NativeTaintFact]] =>
                             ep.p.flows
-                        case ep: InterimEUBP[_, IFDSProperty[LLVMStatement, NativeFact]] ⇒
+                        case ep: InterimEUBP[_, IFDSProperty[LLVMStatement, NativeTaintFact]] =>
                             ep.ub.flows
-                        case _ ⇒
+                        case _ =>
                             Map.empty
                     }
                 for {
-                    (exitStatement, exitStatementFacts) ← exitFacts // ifds line 15.2
-                    exitStatementFact ← exitStatementFacts // ifds line 15.3
+                    (exitStatement, exitStatementFacts) <- exitFacts // ifds line 15.2
+                    exitStatementFact <- exitStatementFacts // ifds line 15.3
                 } {
                     result ++= nativeReturnFlow(exitStatement, exitStatementFact, call, in, callee, successor)
                 }
@@ -105,45 +111,45 @@ class SimpleJavaForwardTaintProblem(p: SomeProject) extends ForwardTaintProblem(
      */
     private def nativeCallFlow(
         call:         JavaStatement,
-        callee:       Function,
-        in:           Fact,
+        callee:       LLVMFunction,
+        in:           TaintFact,
         nativeCallee: Method
-    ): Set[NativeFact] = {
-        val callObject = asCall(call.stmt)
+    ): Set[NativeTaintFact] = {
+        val callObject = JavaIFDSProblem.asCall(call.stmt)
         val allParams = callObject.allParams
         val allParamsWithIndices = allParams.zipWithIndex
         in match {
             // Taint formal parameter if actual parameter is tainted
-            case Variable(index) ⇒
+            case Variable(index) =>
                 allParamsWithIndices.flatMap {
-                    case (param, paramIndex) if param.asVar.definedBy.contains(index) ⇒
+                    case (param, paramIndex) if param.asVar.definedBy.contains(index) =>
                         // TODO: this is passed
-                        Some(NativeVariable(callee.argument(paramIndex + 1))) // offset JNIEnv
-                    case _ ⇒ None // Nothing to do
+                        Some(NativeVariable(callee.function.argument(paramIndex + 1))) // offset JNIEnv
+                    case _ => None // Nothing to do
                 }.toSet
 
             // Taint element of formal parameter if element of actual parameter is tainted
-            case ArrayElement(index, taintedIndex) ⇒
+            case ArrayElement(index, taintedIndex) =>
                 allParamsWithIndices.flatMap {
-                    case (param, paramIndex) if param.asVar.definedBy.contains(index) ⇒
-                        Some(NativeArrayElement(callee.argument(paramIndex + 1), taintedIndex)) // offset JNIEnv
-                    case _ ⇒ None // Nothing to do
+                    case (param, paramIndex) if param.asVar.definedBy.contains(index) =>
+                        Some(NativeVariable(callee.function.argument(paramIndex + 1))) // offset JNIEnv
+                    case _ => None // Nothing to do
                 }.toSet
 
-            case InstanceField(index, declaredClass, taintedField) ⇒
+            case InstanceField(index, declaredClass, taintedField) =>
                 // Taint field of formal parameter if field of actual parameter is tainted
                 // Only if the formal parameter is of a type that may have that field!
                 allParamsWithIndices.flatMap {
-                    case (param, paramIndex) if param.asVar.definedBy.contains(index) ⇒
+                    case (param, paramIndex) if param.asVar.definedBy.contains(index) =>
                         Some(JavaInstanceField(paramIndex + 1, declaredClass, taintedField)) // TODO subtype check
-                    case _ ⇒ None // Nothing to do
+                    case _ => None // Nothing to do
                 }.toSet
 
-            case StaticField(classType, fieldName) ⇒ Set(JavaStaticField(classType, fieldName))
+            case StaticField(classType, fieldName) => Set(JavaStaticField(classType, fieldName))
 
-            case NullFact                          ⇒ Set(NativeNullFact)
+            case TaintNullFact                     => Set(NativeTaintNullFact)
 
-            case _                                 ⇒ Set() // Nothing to do
+            case _                                 => Set() // Nothing to do
 
         }
     }
@@ -160,90 +166,81 @@ class SimpleJavaForwardTaintProblem(p: SomeProject) extends ForwardTaintProblem(
      */
     private def nativeReturnFlow(
         exit:         LLVMStatement,
-        in:           NativeFact,
+        in:           NativeTaintFact,
         call:         JavaStatement,
-        callFact:     Fact,
+        callFact:     TaintFact,
         nativeCallee: Method,
         successor:    JavaStatement
-    ): Set[Fact] = {
-        /**
-         * Checks whether the callee's formal parameter is of a reference type.
-         */
-        def isRefTypeParam(index: Int): Boolean =
-            if (index == -1) true
-            else {
-                val parameterOffset = if (nativeCallee.isStatic) 0 else 1
-                nativeCallee.descriptor.parameterType(
-                    JavaIFDSProblem.switchParamAndVariableIndex(index, nativeCallee.isStatic)
-                        - parameterOffset
-                ).isReferenceType
-            }
-
+    ): Set[TaintFact] = {
         if (sanitizesReturnValue(nativeCallee)) return Set.empty
-        val callStatement = asCall(call.stmt)
+        val callStatement = JavaIFDSProblem.asCall(call.stmt)
         val allParams = callStatement.allParams
-        var flows: Set[Fact] = Set.empty
+        var flows: Set[TaintFact] = Set.empty
         in match {
             // Taint actual parameter if formal parameter is tainted
-            case JavaVariable(index) if index < 0 && index > -100 && isRefTypeParam(index) ⇒
+            case JavaVariable(index) if index < 0 && index > -100 && JavaIFDSProblem.isRefTypeParam(nativeCallee, index) =>
                 val param = allParams(
                     JavaIFDSProblem.switchParamAndVariableIndex(index, nativeCallee.isStatic)
                 )
                 flows ++= param.asVar.definedBy.iterator.map(Variable)
 
             // Taint element of actual parameter if element of formal parameter is tainted
-            case JavaArrayElement(index, taintedIndex) if index < 0 && index > -100 ⇒
+            case JavaArrayElement(index, taintedIndex) if index < 0 && index > -100 =>
                 val param = allParams(
                     JavaIFDSProblem.switchParamAndVariableIndex(index, nativeCallee.isStatic)
                 )
                 flows ++= param.asVar.definedBy.iterator.map(ArrayElement(_, taintedIndex))
 
-            case JavaInstanceField(index, declClass, taintedField) if index < 0 && index > -10 ⇒
+            case JavaInstanceField(index, declClass, taintedField) if index < 0 && index > -10 =>
                 // Taint field of actual parameter if field of formal parameter is tainted
                 val param =
                     allParams(JavaIFDSProblem.switchParamAndVariableIndex(index, nativeCallee.isStatic))
-                param.asVar.definedBy.foreach { defSite ⇒
+                param.asVar.definedBy.foreach { defSite =>
                     flows += InstanceField(defSite, declClass, taintedField)
                 }
 
-            case JavaStaticField(objectType, fieldName) ⇒ flows += StaticField(objectType, fieldName)
+            case JavaStaticField(objectType, fieldName) => flows += StaticField(objectType, fieldName)
 
             // Track the call chain to the sink back
-            case NativeFlowFact(flow) if !flow.contains(JavaMethod(call.method)) ⇒
+            case NativeFlowFact(flow) if !flow.contains(JavaMethod(call.method)) =>
                 flows += FlowFact(JavaMethod(call.method) +: flow)
-            case NativeNullFact ⇒ flows += NullFact
-            case _              ⇒
+            case NativeTaintNullFact => flows += TaintNullFact
+            case _                   =>
         }
 
         // Propagate taints of the return value
         exit.instruction match {
-            case ret: Ret ⇒ {
+            case ret: Ret => {
                 in match {
-                    case NativeVariable(value) if value == ret.value && call.stmt.astID == Assignment.ASTID ⇒
+                    case NativeVariable(value) if value == ret.value && call.stmt.astID == Assignment.ASTID =>
                         flows += Variable(call.index)
                     // TODO
-                    /*case ArrayElement(index, taintedIndex) if returnValueDefinedBy.contains(index) ⇒
+                    /*case ArrayElement(index, taintedIndex) if returnValueDefinedBy.contains(index) =>
             flows += ArrayElement(call.index, taintedIndex)
-          case InstanceField(index, declClass, taintedField) if returnValueDefinedBy.contains(index) ⇒
+          case InstanceField(index, declClass, taintedField) if returnValueDefinedBy.contains(index) =>
             flows += InstanceField(call.index, declClass, taintedField)*/
-                    case NativeNullFact ⇒
+                    case NativeTaintNullFact =>
                         val taints = createTaints(nativeCallee, call)
                         if (taints.nonEmpty) flows ++= taints
-                    case _ ⇒ // Nothing to do
+                    case _ => // Nothing to do
                 }
             }
-            case _ ⇒
+            case _ =>
         }
         flows
+    }
+
+    private def isAlphaNumeric(char: Char): Boolean = {
+        char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9'
     }
 }
 
 class SimpleJavaForwardTaintAnalysis(project: SomeProject)
     extends IFDSAnalysis()(project, new SimpleJavaForwardTaintProblem(project), Taint)
 
-object JavaForwardTaintAnalysisScheduler extends IFDSAnalysisScheduler[Fact, Method, JavaStatement] {
+object JavaForwardTaintAnalysisScheduler extends IFDSAnalysisScheduler[TaintFact, Method, JavaStatement] {
     override def init(p: SomeProject, ps: PropertyStore) = new SimpleJavaForwardTaintAnalysis(p)
-    override def property: IFDSPropertyMetaInformation[JavaStatement, Fact] = Taint
+    override def property: IFDSPropertyMetaInformation[JavaStatement, TaintFact] = Taint
     override def requiredProjectInformation: ProjectInformationKeys = Seq(LLVMProjectKey)
     override val uses: Set[PropertyBounds] = Set(PropertyBounds.finalP(TACAI), PropertyBounds.ub(NativeTaint))
 }

@@ -1,9 +1,9 @@
 /* BSD 2-Clause License - see OPAL/LICENSE for details. */
 package org.opalj.ifds
 
-import scala.collection.{Set ⇒ SomeSet}
+import scala.collection.{Set => SomeSet}
 
-abstract class ICFG[IFDSFact <: AbstractIFDSFact, C <: AnyRef, S <: Statement[C, _]] {
+abstract class ICFG[C <: AnyRef, S <: Statement[_ <: C, _]] {
     /**
      * Determines the statements at which the analysis starts.
      *
@@ -27,7 +27,7 @@ abstract class ICFG[IFDSFact <: AbstractIFDSFact, C <: AnyRef, S <: Statement[C,
      * @return All callables possibly called at the statement or None, if the statement does not
      *         contain a call.
      */
-    def getCalleesIfCallStatement(statement: S): Option[SomeSet[C]]
+    def getCalleesIfCallStatement(statement: S): Option[SomeSet[_ <: C]]
 
     /**
      * Determines whether the statement is an exit statement.

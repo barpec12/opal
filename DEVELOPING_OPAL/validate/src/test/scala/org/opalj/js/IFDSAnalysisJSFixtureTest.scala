@@ -8,7 +8,7 @@ import org.opalj.ai.fpcf.properties.AIDomainFactoryKey
 import org.opalj.br.analyses.Project
 import org.opalj.fpcf.properties.taint.ForwardFlowPath
 import org.opalj.tac.cg.RTACallGraphKey
-import org.opalj.tac.fpcf.analyses.ifds.taint.NullFact
+import org.opalj.tac.fpcf.analyses.ifds.taint.TaintNullFact
 
 import java.net.URL
 
@@ -22,7 +22,7 @@ class IFDSAnalysisJSFixtureTest extends PropertiesTest {
         p.updateProjectInformationKeyInitializationData(
             AIDomainFactoryKey
         )(
-            (_: Option[Set[Class[_ <: AnyRef]]]) ⇒
+            (_: Option[Set[Class[_ <: AnyRef]]]) =>
                 Set[Class[_ <: AnyRef]](
                     classOf[l2.DefaultPerformInvocationsDomainWithCFGAndDefUse[URL]]
                 )
@@ -34,8 +34,8 @@ class IFDSAnalysisJSFixtureTest extends PropertiesTest {
         val testContext = executeAnalyses(IFDSAnalysisJSFixtureScheduler)
         val project = testContext.project
         val eas = methodsWithAnnotations(project).map {
-            case (method, entityString, annotations) ⇒
-                ((method, NullFact), entityString, annotations)
+            case (method, entityString, annotations) =>
+                ((method, TaintNullFact), entityString, annotations)
         }
         testContext.propertyStore.shutdown()
         validateProperties(testContext, eas, Set(ForwardFlowPath.PROPERTY_VALIDATOR_KEY))

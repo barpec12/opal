@@ -11,7 +11,7 @@ import org.opalj.ifds.Dependees.Getter
  * @author Mario Trageser
  * @author Marc Clement
  */
-abstract class IFDSProblem[IFDSFact <: AbstractIFDSFact, C <: AnyRef, S <: Statement[C, _]](val icfg: ICFG[IFDSFact, C, S]) {
+abstract class IFDSProblem[IFDSFact <: AbstractIFDSFact, C <: AnyRef, S <: Statement[_ <: C, _]](val icfg: ICFG[C, S]) {
     type Work = (S, IFDSFact, Option[S])
 
     /**
@@ -23,6 +23,11 @@ abstract class IFDSProblem[IFDSFact <: AbstractIFDSFact, C <: AnyRef, S <: State
      * @return Whether the null Fact is automatically added to the result of every flow function where it is passed into
      */
     def automaticallyPropagateNullFactInFlowFunctions: Boolean = true
+
+    /**
+     * @return Whether to try to subsume new facts under existing facts and save graph edges
+     */
+    def subsumeFacts: Boolean = false
 
     /**
      * The entry points of this analysis.
@@ -96,7 +101,7 @@ abstract class IFDSProblem[IFDSFact <: AbstractIFDSFact, C <: AnyRef, S <: State
 
     def needsPredecessor(statement: S): Boolean
 
-    type OutsideAnalysisContextHandler = ((S, S, IFDSFact, Getter) ⇒ Set[IFDSFact]) {
+    type OutsideAnalysisContextHandler = ((S, S, IFDSFact, Getter) => Set[IFDSFact]) {
         def apply(call: S, successor: S, in: IFDSFact, dependeesGetter: Getter): Set[IFDSFact]
     }
 

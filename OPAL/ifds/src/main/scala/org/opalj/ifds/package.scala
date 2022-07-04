@@ -1,9 +1,7 @@
 /* BSD 2-Clause License - see OPAL/LICENSE for details. */
 package org.opalj
 
-import com.typesafe.config.Config
-import com.typesafe.config.ConfigFactory
-
+import com.typesafe.config.{Config, ConfigFactory}
 import org.opalj.log.LogContext
 import org.opalj.log.GlobalLogContext
 import org.opalj.log.OPALLogger.info
@@ -18,7 +16,7 @@ package object ifds {
             assert(false) // <= test whether assertions are turned on or off...
             info(FrameworkName, "Production Build")
         } catch {
-            case _: AssertionError ⇒ info(FrameworkName, "Development Build with Assertions")
+            case _: AssertionError => info(FrameworkName, "Development Build with Assertions")
         }
     }
 

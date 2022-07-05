@@ -5,9 +5,10 @@ import org.opalj.br.{Method, ObjectType}
 import org.opalj.br.analyses.SomeProject
 import org.opalj.collection.immutable.IntTrieSet
 import org.opalj.ifds.Dependees.Getter
-import org.opalj.tac.{AITACode, ASTNode, Assignment, Call, ComputeTACAIKey, Expr, ExprStmt, MethodCall, Stmt, TACMethodParameter, TACode}
+import org.opalj.tac.fpcf.analyses.ifds.JavaIFDSProblem.V
+import org.opalj.tac.{AITACode, ASTNode, Assignment, Call, ComputeTACAIKey, Expr, ExprStmt, MethodCall, ReturnValue, Stmt, TACMethodParameter, TACode}
 import org.opalj.tac.fpcf.analyses.ifds.{JavaIFDSProblem, JavaMethod, JavaStatement}
-import org.opalj.tac.fpcf.analyses.ifds.taint.{ArrayElement, TaintFact, FlowFact, ForwardTaintProblem, TaintNullFact, Variable}
+import org.opalj.tac.fpcf.analyses.ifds.taint.{ArrayElement, FlowFact, ForwardTaintProblem, TaintFact, TaintNullFact, Variable}
 import org.opalj.value.ValueInformation
 
 import scala.collection.mutable
@@ -73,6 +74,50 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
      * @return Whether in will be removed after the call.
      */
     override protected def sanitizesParameter(call: JavaStatement, in: TaintFact): Boolean = false
+
+    override def callFlow(call: JavaStatement, callee: Method, in: TaintFact): Set[TaintFact] = {
+        val callObject = JavaIFDSProblem.asCall(call.stmt)
+        val allParams = callObject.allParams
+
+        val allParamsWithIndices = allParams.zipWithIndex
+        in match {
+            case BindingFact(index, keyName) => allParamsWithIndices.flatMap {
+                case (param, paramIndex) if param.asVar.definedBy.contains(index) =>
+                    Some(BindingFact(JavaIFDSProblem.switchParamAndVariableIndex(
+                        paramIndex,
+                        callee.isStatic
+                    ), keyName))
+                case _ => None // Nothing to do
+            }.toSet
+            case _ => super.callFlow(call, callee, in)
+        }
+    }
+
+    override def returnFlow(exit: JavaStatement, in: TaintFact, call: JavaStatement, callFact: TaintFact, successor: JavaStatement): Set[TaintFact] = {
+        if (!isPossibleReturnFlow(exit, successor)) return Set.empty
+        val callee = exit.callable
+        if (sanitizesReturnValue(callee)) return Set.empty
+        val callStatement = JavaIFDSProblem.asCall(call.stmt)
+        val allParams = callStatement.allParams
+
+        in match {
+            case BindingFact(index, keyName) =>
+                var flows: Set[TaintFact] = Set.empty
+                if (index < 0 && index > -100) {
+                    val param = allParams(
+                        JavaIFDSProblem.switchParamAndVariableIndex(index, callee.isStatic)
+                    )
+                    flows ++= param.asVar.definedBy.map(i => BindingFact(i, keyName))
+                }
+                if (exit.stmt.astID == ReturnValue.ASTID && call.stmt.astID == Assignment.ASTID) {
+                    val returnValueDefinedBy = exit.stmt.asReturnValue.expr.asVar.definedBy
+                    if (returnValueDefinedBy.contains(index))
+                        flows += BindingFact(call.index, keyName)
+                }
+                flows
+            case _ => super.returnFlow(exit, in, call, callFact, successor)
+        }
+    }
 
     def killFlow(
         call:            JavaStatement,
@@ -248,11 +293,19 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
 
     override def callToReturnFlow(call: JavaStatement, in: TaintFact, successor: JavaStatement): Set[TaintFact] = {
         val callStmt = JavaIFDSProblem.asCall(call.stmt)
-        if (!invokesScriptFunction(callStmt))
-            return super.callToReturnFlow(call, in, successor)
-
         val allParams = callStmt.allParams
         val allParamsWithIndex = callStmt.allParams.zipWithIndex
+
+        if (!invokesScriptFunction(callStmt)) {
+            in match {
+                case BindingFact(index, keyName) =>
+                    if (getParameterIndex(allParamsWithIndex, index) == NO_MATCH)
+                        return Set(in)
+                    else
+                        return Set()
+                case _ => return super.callToReturnFlow(call, in, successor)
+            }
+        }
 
         in match {
             // invokeFunction takes a function name and a variable length argument. This is always an array in TACAI.
@@ -325,10 +378,17 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
             //             val sourceSet = varToJavaScriptSource(call.method, allParams(2).asVar)
             case BindingFact(index, keyName) if callStmt.receiverOption.isDefined && callStmt.receiverOption.get.asVar.definedBy.contains(index)
                 && (callStmt.name == "eval" || callStmt.name == "invokeFunction") =>
-
             case _ => // should be unreachable
         }
 
-        Set()
+        return Set()
+    }
+
+    override def isTainted(expression: Expr[V], in: TaintFact): Boolean = {
+        val definedBy = expression.asVar.definedBy
+        expression.isVar && (in match {
+            case BindingFact(index, _) => definedBy.contains(index)
+            case _                     => super.isTainted(expression, in)
+        })
     }
 }

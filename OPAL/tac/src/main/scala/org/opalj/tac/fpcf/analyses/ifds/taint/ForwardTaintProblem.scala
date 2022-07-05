@@ -351,7 +351,7 @@ abstract class ForwardTaintProblem(project: SomeProject)
      * @param in The current data flow facts.
      * @return True, if the expression could be tainted
      */
-    private def isTainted(expression: Expr[V], in: TaintFact): Boolean = {
+    protected def isTainted(expression: Expr[V], in: TaintFact): Boolean = {
         val definedBy = expression.asVar.definedBy
         expression.isVar && (in match {
             case Variable(index)            => definedBy.contains(index)

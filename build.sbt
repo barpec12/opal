@@ -370,6 +370,15 @@ lazy val `JavaScript` = (project in file("OPAL/js"))
     name := "JavaScript",
     Compile / doc / scalacOptions ++= Opts.doc.title("OPAL - JS"),
     fork := true,
+    libraryDependencies ++= Seq("com.ibm.wala" % "com.ibm.wala.core" % "1.5.7",
+                                "com.ibm.wala" % "com.ibm.wala.util" % "1.5.7",
+                                "com.ibm.wala" % "com.ibm.wala.shrike" % "1.5.7",
+                                "com.ibm.wala" % "com.ibm.wala.cast" % "1.5.7",
+                                "com.ibm.wala" % "com.ibm.wala.cast.java" % "1.5.7",
+                                "com.ibm.wala" % "com.ibm.wala.cast.java.ecj" % "1.5.7",
+                                "com.ibm.wala" % "com.ibm.wala.cast.js" % "1.5.7",
+                                "com.ibm.wala" % "com.ibm.wala.cast.js.rhino" % "1.5.7",
+                                "org.mozilla" % "rhino" % "1.7.10")
   )
   .dependsOn(tac % "it->it;it->test;test->test;compile->compile")
   .configs(IntegrationTest)

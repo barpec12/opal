@@ -38,28 +38,28 @@ public class Java2JsTestClass {
 //        }
 //    }
 //
-//    @ForwardFlowPath({"simpleScriptEngineWithFile"})
-//    public static void simpleScriptEngineWithFile() throws ScriptException
-//    {
-//        ScriptEngineManager sem = new ScriptEngineManager();
-//        ScriptEngine se = sem.getEngineByName("JavaScript");
-//        try {
-//            se.eval(new FileReader("check.js"));
-//        } catch (ScriptException e) {
-//            // never happens
-//        } catch (FileNotFoundException e) {
-//            // ignore
-//        }
-//
-//        String pw = source();
-//
-//        Invocable inv = (Invocable) se;
-//        try {
-//            Boolean state = (Boolean) inv.invokeFunction("check", pw);
-//            sink(state);
-//        } catch (NoSuchMethodException e) {
-//            // never happens
-//        }
+    @ForwardFlowPath({"simpleScriptEngineWithFile"})
+    public static void simpleScriptEngineWithFile() throws ScriptException
+    {
+        ScriptEngineManager sem = new ScriptEngineManager();
+        ScriptEngine se = sem.getEngineByName("JavaScript");
+        try {
+            se.eval(new FileReader("check.js"));
+        } catch (ScriptException e) {
+            // never happens
+        } catch (FileNotFoundException e) {
+            // ignore
+        }
+
+        String pw = source();
+
+        Invocable inv = (Invocable) se;
+        try {
+            Boolean state = (Boolean) inv.invokeFunction("check", pw);
+            sink(state);
+        } catch (NoSuchMethodException e) {
+            // never happens
+        }
 //    }
 //
 //    @ForwardFlowPath({"simplePutGet"})

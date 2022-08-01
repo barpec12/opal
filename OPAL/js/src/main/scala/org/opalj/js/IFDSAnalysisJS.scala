@@ -5,7 +5,7 @@ import org.opalj.br.{Method, ObjectType}
 import org.opalj.br.analyses.SomeProject
 import org.opalj.collection.immutable.IntTrieSet
 import org.opalj.ifds.Dependees.Getter
-import org.opalj.tac.fpcf.analyses.ifds.JavaIFDSProblem.V
+import org.opalj.tac.fpcf.analyses.ifds.JavaIFDSProblem.{V}
 import org.opalj.tac.{AITACode, ASTNode, Assignment, Call, ComputeTACAIKey, Expr, ExprStmt, MethodCall, ReturnValue, Stmt, TACMethodParameter, TACode}
 import org.opalj.tac.fpcf.analyses.ifds.{JavaIFDSProblem, JavaMethod, JavaStatement}
 import org.opalj.tac.fpcf.analyses.ifds.taint.{ArrayElement, FlowFact, ForwardTaintProblem, TaintFact, TaintNullFact, Variable}
@@ -211,6 +211,8 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
         }).filter(_.isDefined).map(_.get)
     }
 
+    val jsSourceCache: mutable.Map[(JavaStatement, Expr[V]), Set[JavaScriptSource]] = mutable.Map()
+
     /**
      * In case of a snippet like this:
      * 1 ScriptEngine se = ...;
@@ -222,16 +224,25 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
      * @param obj ScriptEngine variable
      * @return javascript source code
      */
-    def findJSSourceOnInvokeFunction(method: Method, obj: JavaIFDSProblem.V): Set[JavaScriptSource] = {
-        val decls = findCallOnObject(method, obj.definedBy, "getEngineByName")
-        decls.flatMap(decl => {
-            val evals = findCallOnObject(method, decl.asAssignment.targetVar.usedBy, "eval")
-            evals.flatMap(eval => {
-                val evalCall = JavaIFDSProblem.asCall(eval)
-                varToJavaScriptSource(method, evalCall.params.head.asVar)
+    def findJSSourceOnInvokeFunction(javaStmt: JavaStatement, arg: Expr[JavaIFDSProblem.V]): Set[JavaScriptSource] = {
+        val decls = findCallOnObject(javaStmt.method, arg.asVar.definedBy, "getEngineByName")
+
+        val maybeCached = jsSourceCache.get((javaStmt, arg))
+        if (maybeCached.isDefined)
+            maybeCached.get
+        else
+            decls.flatMap(decl => {
+                val evals = findCallOnObject(javaStmt.method, decl.asAssignment.targetVar.usedBy, "eval")
+                val jsSources = evals.flatMap(eval => {
+                    val evalCall = JavaIFDSProblem.asCall(eval)
+                    varToJavaScriptSource(javaStmt.method, evalCall.params.head.asVar)
+                })
+                jsSourceCache += (javaStmt, arg) -> jsSources
+                jsSources
             })
-        })
     }
+
+    val statementToJavaScriptSource: mutable.Map[Stmt[V], JavaScriptSource] = mutable.Map()
 
     /**
      * Tries to resolve a variable either to a string constant or a file path containing the variable's value
@@ -241,7 +252,6 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
      */
     def varToJavaScriptSource(method: Method, variable: JavaIFDSProblem.V): Set[JavaScriptSource] = {
         val resultSet: mutable.Set[JavaScriptSource] = mutable.Set()
-
         def findFileArg(sites: IntTrieSet): Unit = {
             val calls = findCallOnObject(method, sites, "<init>");
             calls.foreach(init => {
@@ -250,7 +260,8 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
                 defs.foreach {
                     /* new File("path/to/src"); */
                     case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst =>
-                        resultSet.add(JavaScriptFileSource(a.expr.asStringConst.value))
+//                      JavaScriptFileSource(a.expr.asStringConst.value)
+                        resultSet.add(statementToJavaScriptSource.getOrElseUpdate(a, JavaScriptFileSource(a.expr.asStringConst.value)))
                     /* File constructor argument is no string constant */
                     case _ =>
                 }
@@ -265,7 +276,7 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
                 defs.foreach {
                     /* FileReader fr = new FileReader(new File("path/to/src")); */
                     case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst =>
-                        resultSet.add(JavaScriptFileSource(a.expr.asStringConst.value))
+                      resultSet.add(statementToJavaScriptSource.getOrElseUpdate(a, JavaScriptFileSource(a.expr.asStringConst.value)))
                     /* new FileReader(new File(...)); */
                     case a: Assignment[JavaIFDSProblem.V] if a.expr.isNew =>
                         if (a.expr.asNew.tpe.isSubtypeOf(ObjectType("java/io/File"))(p.classHierarchy))
@@ -280,7 +291,7 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
         nextJStmts.foreach {
             /* se.eval("function() ..."); */
             case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst =>
-                resultSet.add(JavaScriptStringSource(a.expr.asStringConst.value))
+              resultSet.add(statementToJavaScriptSource.getOrElseUpdate(a, JavaScriptStringSource(a.expr.asStringConst.value)))
             /* se.eval(new FileReader(...)); */
             case a: Assignment[JavaIFDSProblem.V] if a.expr.isNew =>
                 if (a.expr.asNew.tpe.isSubtypeOf(ObjectType("java/io/FileReader"))(p.classHierarchy))
@@ -310,7 +321,7 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
         in match {
             // invokeFunction takes a function name and a variable length argument. This is always an array in TACAI.
             case ArrayElement(index, taintedIndex) if callStmt.name == "invokeFunction" && getParameterIndex(allParamsWithIndex, index) == -3 =>
-                val sourceSet = findJSSourceOnInvokeFunction(call.method, allParams.head.asVar)
+                val sourceSet = findJSSourceOnInvokeFunction(call, allParams.head.asVar)
                 sourceSet.foreach(source => {
                     // TODO: Call JS analysis
                     if (source.asString.contains("check") && call.stmt.isAssignment) {

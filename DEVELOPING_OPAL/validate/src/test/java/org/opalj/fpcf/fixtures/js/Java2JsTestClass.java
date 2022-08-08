@@ -23,13 +23,6 @@ public class Java2JsTestClass {
         String pw = source();
 
         se.put("secret", pw);
-        try {
-            se.eval("function check(str) {\n" +
-                    "    return str === \"1337\";\n" +
-                    "}");
-        } catch (ScriptException e) {
-            // never happens
-        }
 
         String fromJS = (String) se.get("secret");
         sink(fromJS);

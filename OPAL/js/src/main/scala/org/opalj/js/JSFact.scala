@@ -12,4 +12,4 @@ trait JSFact extends TaintFact
  * @param index map
  * @param keyName name of the key. Empty string if unknown.
  */
-case class BindingFact(index: Int, keyName: String) extends JSFact
+case class BindingFact(index: Int, keyName: String) extends JSFact with TaintFact

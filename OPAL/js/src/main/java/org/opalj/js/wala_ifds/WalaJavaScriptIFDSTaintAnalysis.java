@@ -7,6 +7,7 @@ import com.ibm.wala.cast.js.util.JSCallGraphBuilderUtil;
 import com.ibm.wala.cast.loader.AstMethod;
 import com.ibm.wala.cast.tree.CAstSourcePositionMap;
 import com.ibm.wala.cast.util.SourceBuffer;
+import com.ibm.wala.classLoader.CallSiteReference;
 import com.ibm.wala.dataflow.IFDS.ICFGSupergraph;
 import com.ibm.wala.dataflow.IFDS.PartiallyBalancedTabulationSolver;
 import com.ibm.wala.dataflow.IFDS.TabulationResult;
@@ -18,19 +19,19 @@ import com.ibm.wala.ipa.cfg.BasicBlockInContext;
 import com.ibm.wala.ssa.SSAAbstractInvokeInstruction;
 import com.ibm.wala.ssa.SSAInstruction;
 import com.ibm.wala.ssa.analysis.IExplodedBasicBlock;
+import com.ibm.wala.types.MethodReference;
+import com.ibm.wala.types.TypeReference;
 import com.ibm.wala.util.CancelException;
 import com.ibm.wala.util.WalaException;
 import com.ibm.wala.util.collections.HashSetFactory;
 import com.ibm.wala.util.collections.Pair;
 import com.ibm.wala.util.intset.IntIterator;
 import com.ibm.wala.util.intset.IntSet;
+import org.opalj.tac.Call;
 
 import java.io.IOException;
 import java.net.URL;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Function;
 
 public class WalaJavaScriptIFDSTaintAnalysis {
@@ -50,26 +51,21 @@ public class WalaJavaScriptIFDSTaintAnalysis {
 
     public static void main(String... args) throws IllegalArgumentException, CancelException, WalaException, IOException {
 //        String path = args[0];
-        String path = "file:///home/tim/Projects/wala-ifds/test.js";
+//        String path = "file:///home/tim/Projects/wala-ifds/test.js";
+        String path = "file:///tmp/opal7931685687191394247.js";
         JSCallGraphUtil.setTranslatorFactory(new CAstRhinoTranslatorFactory());
         URL url = new URL(path);
-        JSCFABuilder B = JSCallGraphBuilderUtil.makeScriptCGBuilder("/home/tim/Projects/wala-ifds/", "test.js");
-//        JSCFABuilder B = JSCallGraphBuilderUtil.makeHTMLCGBuilder(url);
+        JSCFABuilder B = JSCallGraphBuilderUtil.makeScriptCGBuilder("/tmp/", "opal7137384107899104585.js");
         AnalysisOptions opt = B.getOptions();
-//        JavaScriptEntryPoints eps = JSCallGraphBuilderUtil.makeScriptRoots(B.getClassHierarchy());
-        Iterable<? extends Entrypoint> jsEps = opt.getEntrypoints();
-//        jsEps.forEach(entrypoint -> entrypoint.);
         CallGraph CG = B.makeCallGraph(opt);
-        CG.forEach(cgNode -> System.out.println(cgNode.toString()));
 
         Function<BasicBlockInContext<IExplodedBasicBlock>, Boolean> sources = (ebb) -> {
-//            System.out.println(ebb.getMethod().getDeclaringClass().toString());
             SSAInstruction inst = ebb.getDelegate().getInstruction();
-
-
             if (inst instanceof SSAAbstractInvokeInstruction) {
                 for (CGNode target : CG.getPossibleTargets(ebb.getNode(), ((SSAAbstractInvokeInstruction) inst).getCallSite())) {
-                    if (target.getMethod().getDeclaringClass().getName().toString().endsWith("source"))
+                    System.out.println(target.getMethod().getDeclaringClass().getName().toString());
+
+                    if (target.getMethod().getDeclaringClass().getName().toString().endsWith("opal_source"))
                         return true;
                 }
             }
@@ -81,21 +77,44 @@ public class WalaJavaScriptIFDSTaintAnalysis {
             SSAInstruction inst = bb.getDelegate().getInstruction();
           if (inst instanceof SSAAbstractInvokeInstruction) {
                 for (CGNode target : CG.getPossibleTargets(bb.getNode(), ((SSAAbstractInvokeInstruction) inst).getCallSite())) {
-                    if (target.getMethod().getDeclaringClass().getName().toString().endsWith("sink"))
+                    if (target.getMethod().getDeclaringClass().getName().toString().endsWith("opal_sink"))
                         return true;
                 }
             }
             return false;
         };
 
-        analyzeTaint(CG, sources, sinks).forEach(witness -> witness.forEach(step -> {
+        analyzeTaint(CG, sources, sinks).forEach(sinkPos -> {
             try {
-                System.out.println(new SourceBuffer(step));
+                System.out.println(new SourceBuffer(sinkPos).toString());
             } catch (IOException e) {
                 // TODO Auto-generated catch block
                 e.printStackTrace();
             }
-        }));
+        });
+    }
+
+    /**
+     * Call the WALA IFDS analysis with custom sources and sinks functions and then returns the sinks as source code
+     * of the provided file. (Yeah, hacky, I know...)
+     * @param CG Call Graph
+     * @param sources Return true iff node is a source
+     * @param sinks Return true iff node is a sink
+     * @return sinks as source code of the provided file
+     */
+    public static List<String> startJSAnalysis(CallGraph CG,
+                                               Function<BasicBlockInContext<IExplodedBasicBlock>, Boolean> sources,
+                                               Function<BasicBlockInContext<IExplodedBasicBlock>, Boolean> sinks) {
+        List<String> reachedSinks = new ArrayList<>();
+        analyzeTaint(CG, sources, sinks).forEach(sinkPos -> {
+            try {
+                reachedSinks.add(new SourceBuffer(sinkPos).toString());
+            } catch (IOException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
+        });
+        return reachedSinks;
     }
 
     public TabulationResult<BasicBlockInContext<IExplodedBasicBlock>, CGNode, Pair<Integer,BasicBlockInContext<IExplodedBasicBlock>>> analyze() {
@@ -110,64 +129,23 @@ public class WalaJavaScriptIFDSTaintAnalysis {
         }
         return result;
     }
-    public static Set<List<CAstSourcePositionMap.Position>> analyzeTaint(CallGraph CG, Function<BasicBlockInContext<IExplodedBasicBlock>, Boolean> sources, Function<BasicBlockInContext<IExplodedBasicBlock>, Boolean> sinks) {
+
+    public static Set<CAstSourcePositionMap.Position> analyzeTaint(CallGraph CG, Function<BasicBlockInContext<IExplodedBasicBlock>, Boolean> sources, Function<BasicBlockInContext<IExplodedBasicBlock>, Boolean> sinks) {
         WalaJavaScriptIFDSTaintAnalysis A = new WalaJavaScriptIFDSTaintAnalysis(CG, sources);
 
-        TabulationResult<BasicBlockInContext<IExplodedBasicBlock>, CGNode, Pair<Integer, BasicBlockInContext<IExplodedBasicBlock>>> R = A.analyze();
+        TabulationResult<BasicBlockInContext<IExplodedBasicBlock>,
+                         CGNode, Pair<Integer, BasicBlockInContext<IExplodedBasicBlock>>> R = A.analyze();
 
-        Set<List<CAstSourcePositionMap.Position>> result = HashSetFactory.make();
+        Set<CAstSourcePositionMap.Position> result = HashSetFactory.make();
 
         R.getSupergraphNodesReached().forEach((sbb) -> {
-            SSAInstruction in = sbb.getDelegate().getInstruction();
-            if (in instanceof SSAAbstractInvokeInstruction) {
-                for (CGNode target : CG.getPossibleTargets(sbb.getNode(), ((SSAAbstractInvokeInstruction) in).getCallSite())) {
-                    if (target.getMethod().getDeclaringClass().getName().toString().endsWith("calledFromJava")) {
-                        if (A.supergraph.getSuccNodes(sbb).hasNext()) {
-                            Iterator<BasicBlockInContext<IExplodedBasicBlock>> it = A.supergraph.getSuccNodes(sbb);
-                            if (it.hasNext()) {
-                                /* Look at the successor to find out whether the retval got tainted.  */
-                                BasicBlockInContext<IExplodedBasicBlock> next = it.next();
-                                IntSet r = R.getResult(next);
-                                r.foreach(i -> {
-                                    Pair<Integer, BasicBlockInContext<IExplodedBasicBlock>> vn = A.domain.getMappedObject(i);
-
-                                    if (in.getDef() == vn.fst) {
-                                        System.out.println("Return tainted");
-                                    }
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-
             if (sinks.apply(sbb)) {
-                System.out.println("sink " + sbb.getDelegate().getInstruction());
-                BasicBlockInContext<IExplodedBasicBlock> bb= sbb;
-                List<CAstSourcePositionMap.Position> witness = new LinkedList<>();
-                steps: while (bb != null) {
-                    IntSet r = R.getResult(bb);
-                    SSAInstruction inst = bb.getDelegate().getInstruction();
-                    if (bb.getMethod() instanceof AstMethod) {
-                        CAstSourcePositionMap.Position pos = ((AstMethod)bb.getMethod()).debugInfo().getInstructionPosition(inst.iIndex());
-                        witness.add(0, pos);
-                    }
-                    IntIterator vals = r.intIterator();
-                    while(vals.hasNext()) {
-                        int i = vals.next();
-                        Pair<Integer, BasicBlockInContext<IExplodedBasicBlock>> vn = A.domain.getMappedObject(i);
-                        for(int j = 0; j < inst.getNumberOfUses(); j++) {
-                            if (inst.getUse(j) == vn.fst) {
-                                bb = vn.snd;
-                                System.out.println("step " + bb.getDelegate().getInstruction());
-                                continue steps;
-                            }
-                        }
-                    }
-                    bb = null;
-                }
-                if (witness.size() > 0) {
-                    result.add(witness);
+                BasicBlockInContext<IExplodedBasicBlock> bb = sbb;
+                SSAInstruction inst = bb.getDelegate().getInstruction();
+                if (bb.getMethod() instanceof AstMethod) {
+                    AstMethod.DebuggingInformation dbg = ((AstMethod)bb.getMethod()).debugInfo();
+                    CAstSourcePositionMap.Position pos = dbg.getInstructionPosition(inst.iIndex());
+                    result.add(pos);
                 }
             }
         });

@@ -15,6 +15,46 @@ public class Java2JsTestClass {
 
     private int instanceField;
 
+    @ForwardFlowPath({"flowThroughJS"})
+    public static void flowThroughJS() throws ScriptException
+    {
+        ScriptEngineManager sem = new ScriptEngineManager();
+        ScriptEngine se = sem.getEngineByName("JavaScript");
+        String pw = source();
+
+        se.put("secret", pw);
+        try {
+            se.eval("function check(str) {\n" +
+                    "    return str === \"1337\";\n" +
+                    "}");
+        } catch (ScriptException e) {
+            // never happens
+        }
+
+        String fromJS = (String) se.get("secret");
+        sink(fromJS);
+        System.out.println(fromJS);
+    }
+
+//    @ForwardFlowPath({""})
+//    public static void jsOverwritesBinding() throws ScriptException
+//    {
+//        ScriptEngineManager sem = new ScriptEngineManager();
+//        ScriptEngine se = sem.getEngineByName("JavaScript");
+//        String pw = source();
+//
+//        se.put("secret", pw);
+//        try {
+//            se.eval("secret = \"42\";");
+//        } catch (ScriptException e) {
+//            // never happens
+//        }
+//
+//        String fromJS = (String) se.get("secret");
+//        sink(fromJS);
+//    }
+
+
     @ForwardFlowPath({"simpleScriptEngineWithString"})
     public static void simpleScriptEngineWithString() throws ScriptException
     {
@@ -231,7 +271,7 @@ public class Java2JsTestClass {
         System.out.println(i);
     }
     private static void sink(String i) {
-        System.out.println(i);
+//        System.out.println(i);
     }
     private static void sink(boolean i) {
         System.out.println(i);

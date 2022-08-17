@@ -21,7 +21,7 @@ class JavaScriptAnalysis(p: SomeProject) {
     val sourceFinder = new LocalJSSourceFinder(p);
 
     def analyze(stmt: JavaStatement, in: BindingFact): Set[TaintFact] = {
-        val sourceFiles = sourceFinder(stmt);
+        val sourceFiles = sourceFinder(stmt)
         sourceFiles.flatMap(s => analyzeFile(s, stmt, in))
     }
 

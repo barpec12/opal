@@ -1,17 +1,29 @@
 /* BSD 2-Clause License - see OPAL/LICENSE for details. */
 package org.opalj.tac.fpcf.analyses.ifds.taint
 
-import org.opalj.br.Method
+import scala.xml.XML
+import org.opalj.br.{FieldTypes, Method, ObjectType}
 import org.opalj.br.analyses.{DeclaredMethodsKey, SomeProject}
 import org.opalj.ifds.Dependees.Getter
 import org.opalj.tac._
 import org.opalj.tac.fpcf.analyses.ifds.JavaIFDSProblem.V
+import org.opalj.tac.fpcf.analyses.ifds.taint.summaries.TaintSummary
 import org.opalj.tac.fpcf.analyses.ifds.{JavaIFDSProblem, JavaMethod, JavaStatement}
+
+import java.io.File
 
 abstract class ForwardTaintProblem(project: SomeProject)
     extends JavaIFDSProblem[TaintFact](project)
     with TaintProblem[Method, JavaStatement, TaintFact] {
     val declaredMethods = project.get(DeclaredMethodsKey)
+
+    def useSummaries: Boolean = false
+    lazy val summaryFiles: Array[File] = new File(getClass.getResource("/summaries/").getPath).listFiles()
+    lazy val summaries: Map[String, TaintSummary] =
+        (summaryFiles.map(f => f.getName.replace(".xml", "").replace(".", "/"))
+            zip
+            summaryFiles.map(f => new TaintSummary(XML.loadFile(f)))).toMap
+
     override def nullFact: TaintFact = TaintNullFact
 
     override def needsPredecessor(statement: JavaStatement): Boolean = false
@@ -104,7 +116,6 @@ abstract class ForwardTaintProblem(project: SomeProject)
                         ))
                     case _ => None // Nothing to do
                 }.toSet
-
             case InstanceField(index, declClass, taintedField) =>
                 // Taint field of formal parameter if field of actual parameter is tainted
                 // Only if the formal parameter is of a type that may have that field!
@@ -213,7 +224,10 @@ abstract class ForwardTaintProblem(project: SomeProject)
             }
         }
 
-        if (icfg.getCalleesIfCallStatement(call).isEmpty) {
+        if (useSummaries && isSummarized(callStmt)) {
+            val summaryForClass = summaries(callStmt.declaringClass.mostPreciseObjectType.fqn)
+            summaryForClass.compute(call, callStmt, in)
+        } else if (icfg.getCalleesIfCallStatement(call).isEmpty) {
             // If the call does not have any callees, the code is unknown
             // and we safely handle it as the identity
             Set(in)
@@ -256,32 +270,43 @@ abstract class ForwardTaintProblem(project: SomeProject)
     protected def createFlowFact(callee: Method, call: JavaStatement,
                                  in: TaintFact): Option[FlowFact]
 
+    private def isSummarized(objType: ObjectType, methodName: String, paramTypes: FieldTypes): Boolean =
+        summaries.contains(objType.fqn)
+
+    def isSummarized(callStmt: Call[JavaIFDSProblem.V]): Boolean =
+        isSummarized(callStmt.declaringClass.mostPreciseObjectType, callStmt.name, callStmt.descriptor.parameterTypes)
+
+    def isSummarized(method: Method): Boolean =
+        isSummarized(method.classFile.thisType, method.name, method.parameterTypes)
+
     /**
      * If a parameter is tainted, the result will also be tainted.
      * We assume that the callee does not call the source method.
      */
     override def outsideAnalysisContext(callee: Method): Option[OutsideAnalysisContextHandler] = {
-        super.outsideAnalysisContext(callee) match {
-            case Some(_) => Some(((call: JavaStatement, successor: JavaStatement, in: TaintFact, _: Getter) => {
-                val allParams = JavaIFDSProblem.asCall(call.stmt).receiverOption ++ JavaIFDSProblem.asCall(call.stmt).params
-                if (call.stmt.astID == Assignment.ASTID && (in match {
-                    case Variable(index) =>
-                        allParams.zipWithIndex.exists {
-                            case (param, _) if param.asVar.definedBy.contains(index) => true
-                            case _                                                   => false
-                        }
-                    case ArrayElement(index, _) =>
-                        allParams.zipWithIndex.exists {
-                            case (param, _) if param.asVar.definedBy.contains(index) => true
-                            case _                                                   => false
-                        }
-                    case _ => false
-                })) Set(Variable(call.index))
-                else Set.empty
-            }): OutsideAnalysisContextHandler)
-            case None => None
-        }
-
+        if (useSummaries && isSummarized(callee))
+            Some(((_: JavaStatement, _: JavaStatement, _: TaintFact, _: Getter) => Set.empty): OutsideAnalysisContextHandler)
+        else
+            super.outsideAnalysisContext(callee) match {
+                case Some(_) => Some(((call: JavaStatement, successor: JavaStatement, in: TaintFact, _: Getter) => {
+                    val allParams = JavaIFDSProblem.asCall(call.stmt).receiverOption ++ JavaIFDSProblem.asCall(call.stmt).params
+                    if (call.stmt.astID == Assignment.ASTID && (in match {
+                        case Variable(index) =>
+                            allParams.zipWithIndex.exists {
+                                case (param, _) if param.asVar.definedBy.contains(index) => true
+                                case _                                                   => false
+                            }
+                        case ArrayElement(index, _) =>
+                            allParams.zipWithIndex.exists {
+                                case (param, _) if param.asVar.definedBy.contains(index) => true
+                                case _                                                   => false
+                            }
+                        case _ => false
+                    })) Set(Variable(call.index))
+                    else Set.empty
+                }): OutsideAnalysisContextHandler)
+                case None => None
+            }
     }
 
     /**

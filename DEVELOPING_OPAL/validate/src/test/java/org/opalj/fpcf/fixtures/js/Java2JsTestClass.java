@@ -47,7 +47,6 @@ public class Java2JsTestClass {
 //        sink(fromJS);
 //    }
 
-
     @ForwardFlowPath({"simpleScriptEngineWithString"})
     public static void simpleScriptEngineWithString() throws ScriptException
     {
@@ -116,7 +115,8 @@ public class Java2JsTestClass {
         String pw = source();
         // String is no constant
         se.put(Integer.toString(1337), pw);
-        // TODO: Should we introduce a taint here or not?
+        // Because the .put had no constant string, we do not know the key here
+        // and taint the return as an over-approximation.
         Object out = se.get("secret");
         sink(out);
     }
@@ -158,7 +158,8 @@ public class Java2JsTestClass {
         String pw = source();
         // String is no constant
         se.put(Integer.toString(1337), pw);
-        // TODO: Should we introduce a taint here or not?
+        // Because the .put had no constant string, we do not know the key here
+        // and taint the return as an over-approximation.
         Object out = se.get("secret");
         sink(out);
     }

@@ -22,6 +22,8 @@ class IFDSAnalysisJSFixture(project: SomeProject)
     extends IFDSAnalysis()(project, new IFDSAnalysisJSProblemFixture(project), Taint)
 
 class IFDSAnalysisJSProblemFixture(p: SomeProject) extends IFDSAnalysisJS(p) {
+    override def useSummaries = true
+
     /**
      * The analysis starts with all public methods in TaintAnalysisTestClass.
      */

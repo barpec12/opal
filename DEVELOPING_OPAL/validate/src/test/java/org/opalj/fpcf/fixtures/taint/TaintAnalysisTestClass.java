@@ -366,6 +366,13 @@ public class TaintAnalysisTestClass {
         }
     }*/
 
+    /* Tests using summaries. */
+    @ForwardFlowPath({"flowWithSummary"})
+    public static void flowWithSummary() {
+        Integer i = Integer.valueOf(source());
+        sink(i.intValue());
+    }
+
     public int callSourcePublic() {
         return source();
     }

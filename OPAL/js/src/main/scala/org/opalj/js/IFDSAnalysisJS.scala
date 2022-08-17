@@ -5,7 +5,7 @@ import org.opalj.br.{Method, ObjectType}
 import org.opalj.br.analyses.SomeProject
 import org.opalj.collection.immutable.IntTrieSet
 import org.opalj.ifds.Dependees.Getter
-import org.opalj.tac.fpcf.analyses.ifds.JavaIFDSProblem.{V}
+import org.opalj.tac.fpcf.analyses.ifds.JavaIFDSProblem.{NO_MATCH, V}
 import org.opalj.tac.{AITACode, Assignment, Call, ComputeTACAIKey, Expr, ReturnValue, Stmt, TACMethodParameter, TACode}
 import org.opalj.tac.fpcf.analyses.ifds.{JavaIFDSProblem, JavaMethod, JavaStatement}
 import org.opalj.tac.fpcf.analyses.ifds.taint.{ArrayElement, FlowFact, ForwardTaintProblem, TaintFact, TaintNullFact, Variable}
@@ -159,16 +159,6 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
         }
     }
 
-    val NO_MATCH = 256
-    def getParameterIndex(allParamsWithIndex: Seq[(Expr[JavaIFDSProblem.V], Int)], index: Int): Int = {
-        allParamsWithIndex.find {
-            case (param, paramI) => param.asVar.definedBy.contains(index)
-        } match {
-            case Some((param, paramI)) => JavaIFDSProblem.switchParamAndVariableIndex(paramI, isStaticMethod = false)
-            case None                  => NO_MATCH
-        }
-    }
-
     /**
      * Finds all definiton/use sites inside the method.
      *
@@ -191,7 +181,7 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
         if (!invokesScriptFunction(callStmt)) {
             in match {
                 case BindingFact(index, keyName) =>
-                    if (getParameterIndex(allParamsWithIndex, index) == NO_MATCH)
+                    if (JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index) == NO_MATCH)
                         return Set(in)
                     else
                         return Set()
@@ -201,11 +191,11 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
 
         in match {
             // invokeFunction takes a function name and a variable length argument. This is always an array in TACAI.
-            case ArrayElement(index, taintedIndex) if callStmt.name == "invokeFunction" && getParameterIndex(allParamsWithIndex, index) == -3 =>
+            case ArrayElement(index, taintedIndex) if callStmt.name == "invokeFunction" && JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index) == -3 =>
                 // TODO: actually model
                 return Set(Variable(call.index))
             /* put obj in Binding */
-            case Variable(index) if callStmt.name == "put" && getParameterIndex(allParamsWithIndex, index) == -3 =>
+            case Variable(index) if callStmt.name == "put" && JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index) == -3 =>
                 val taints = mutable.Set(in)
                 searchStmts(call.method, allParams(1).asVar.definedBy).foreach {
                     case a: Assignment[JavaIFDSProblem.V] =>
@@ -216,13 +206,13 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
                 }
                 return taints.toSet
             /* putAll BindingFact to other BindingFact */
-            case BindingFact(index, keyName) if callStmt.name == "putAll" && getParameterIndex(allParamsWithIndex, index) == -2 =>
+            case BindingFact(index, keyName) if callStmt.name == "putAll" && JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index) == -2 =>
                 callStmt.receiverOption match {
                     case Some(baseObj) => return baseObj.asVar.definedBy.map(i => BindingFact(i, keyName)) ++ Set(in)
                     case None          => return Set(in)
                 }
             /* Overwrite BindingFact */
-            case BindingFact(index, keyName) if callStmt.name == "put" && getParameterIndex(allParamsWithIndex, index) == -1 =>
+            case BindingFact(index, keyName) if callStmt.name == "put" && JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index) == -1 =>
                 if (keyName == "")
                     return Set(in)
                 val possibleFields = mutable.Set[String]()
@@ -236,7 +226,7 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
                 else
                     return Set(in)
             /* Remove BindingFact */
-            case BindingFact(index, keyName) if callStmt.name == "remove" && getParameterIndex(allParamsWithIndex, index) == -1 =>
+            case BindingFact(index, keyName) if callStmt.name == "remove" && JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index) == -1 =>
                 if (keyName == "")
                     return Set(in)
                 val possibleFields = mutable.Set[String]()
@@ -250,7 +240,7 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
                 else
                     return Set(in)
             /* get from BindingFact */
-            case BindingFact(index, keyName) if callStmt.name == "get" && getParameterIndex(allParamsWithIndex, index) == -1 =>
+            case BindingFact(index, keyName) if callStmt.name == "get" && JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index) == -1 =>
                 if (keyName == "")
                     return Set(Variable(call.index), in)
                 searchStmts(call.method, allParams(1).asVar.definedBy).foreach {
@@ -261,8 +251,8 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
                     case _ =>
                 }
             case b: BindingFact if callStmt.name == "eval"
-                && (getParameterIndex(allParamsWithIndex, b.index) == -1
-                    || getParameterIndex(allParamsWithIndex, b.index) == -3) =>
+                && (JavaIFDSProblem.getParameterIndex(allParamsWithIndex, b.index) == -1
+                    || JavaIFDSProblem.getParameterIndex(allParamsWithIndex, b.index) == -3) =>
                 return jsAnalysis.analyze(call, b)
             case _ =>
         }

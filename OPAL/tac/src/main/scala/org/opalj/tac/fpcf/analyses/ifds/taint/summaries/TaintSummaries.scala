@@ -14,7 +14,19 @@ import scala.util.matching.Regex
 import scala.xml.{Node, XML}
 
 /**
+ * This file implements a subset of the StubDroid summary specification.
+ *
+ * Not implemented (yet):
+ * - Summaries for inner classes
+ * - Type Checking
+ * - Metadata/Exclusiveness
+ * - Aliasing (depends on the IFDS analysis)
+ * - Access Paths with k > 1 (again, depends on the IFS analysis)
+ */
+
+/**
  * Holds summaries for all classes.
+ *
  * @param files summary XML files
  */
 case class TaintSummaries(files: List[File]) {
@@ -37,6 +49,7 @@ case class TaintSummaries(files: List[File]) {
 
     /**
      * Return true if the method is summarized.
+     *
      * @param method callee
      * @return whether the method is summarized.
      */
@@ -45,7 +58,6 @@ case class TaintSummaries(files: List[File]) {
 
     /**
      * Applies the summary if available, else does nothing.
-     *
      * Precondition: callee class is summarized.
      *
      * @param call     call java statement
@@ -63,9 +75,11 @@ case class TaintSummaries(files: List[File]) {
 
 /**
  * Holds the methods summaries for a single class.
+ *
  * @param summaryNode 'summary' XML node
  */
 case class ClassSummary(summaryNode: Node) {
+    /* Method summaries. */
     def methods: Seq[MethodSummary] = (summaryNode \\ "methods" \\ "method")
         .map(methodNode => {
             val sig = (methodNode \@ "id")
@@ -91,7 +105,8 @@ case class ClassSummary(summaryNode: Node) {
         }).toList
 
     /**
-     * Applies the summary if available, else does nothing.
+     * Applies the summary if available, else does perform the identity.
+     *
      * @param call call java statement
      * @param callStmt call TAC statement
      * @param in fact
@@ -120,7 +135,8 @@ object ClassSummary {
     val signaturePattern: Regex = """([a-zA-Z.\[\]]*?) ([a-zA-Z0-9_<>]*?)\(([a-zA-Z.\[\],\s]*?)\)""".r
 
     /**
-     * Converts the type string in Soot's format to the OPAL ObjectType.
+     * Converts the type string in Soot's format to the OPAL ObjectType, excluding void.
+     *
      * @param str type string
      * @return ObjectType
      */
@@ -143,6 +159,12 @@ object ClassSummary {
         }
     }
 
+    /**
+     * Converts the type string in Soot's format to the OPAL ObjectType, including void.
+     *
+     * @param str type string
+     * @return ObjectType
+     */
     def stringToType(str: String): Type = {
         str match {
             case "void" => VoidType
@@ -153,6 +175,7 @@ object ClassSummary {
 
 /**
  * Represents the summary of a single method.
+ *
  * @param returnType return type
  * @param methodName method name
  * @param paramTypes parameter types
@@ -174,6 +197,7 @@ case class MethodSummary(returnType: Type, methodName: String, paramTypes: List[
 
 /**
  * Represents one summarized flow.
+ *
  * @param flowNode 'flow' XML node
  */
 case class Flow(flowNode: Node) {
@@ -186,6 +210,7 @@ case class Flow(flowNode: Node) {
 
     /**
      * Return true if the taint matches the 'from' rule.
+     *
      * @param callStmt call TAC statement
      * @param in fact
      * @return Boolean
@@ -202,9 +227,23 @@ case class Flow(flowNode: Node) {
                     /* Summaries do not know array elements. */
                     case ArrayElement(index, _) =>
                         JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index, isStatic) == summaryIndex
+                    case InstanceField(index, _, fieldName) =>
+                        JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index, isStatic) == summaryIndex
                     case _ => false
                 }
-            case BaseObjectSummaryTaint(summaryFieldName: String) =>
+            case ParameterSummaryTaintWithField(summaryIndex, summaryFieldName) =>
+                in match {
+                    case Variable(index) =>
+                        JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index, isStatic) == summaryIndex
+                    /* Summaries do not know array elements. */
+                    case ArrayElement(index, _) =>
+                        JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index, isStatic) == summaryIndex
+                    case InstanceField(index, _, fieldName) =>
+                        (JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index, isStatic) == summaryIndex
+                            && summaryFieldName == fieldName)
+                    case _ => false
+                }
+            case BaseObjectSummaryTaint(summaryFieldName) =>
                 in match {
                     case InstanceField(index, _, fieldName) =>
                         (JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index, isStatic) == -1
@@ -220,6 +259,7 @@ case class Flow(flowNode: Node) {
 
     /**
      * Return the resulting set of facts after applying the summary.
+     *
      * @param call call java statement
      * @param callStmt call TAC statement
      * @param in fact
@@ -227,38 +267,59 @@ case class Flow(flowNode: Node) {
      */
     def createTaint(call: JavaStatement, callStmt: Call[V], in: TaintFact): Set[TaintFact] = {
         to match {
-            case ParameterSummaryTaint(summaryIndex: Int) =>
+            case ParameterSummaryTaint(summaryIndex) =>
                 callStmt.params(summaryIndex).asVar.definedBy.map(i => Variable(i))
-            case BaseObjectSummaryTaint(fieldName) =>
-                Set(InstanceField(call.index, callStmt.declaringClass.mostPreciseObjectType, fieldName))
+            case ParameterSummaryTaintWithField(summaryIndex, fieldName) =>
+                callStmt.params(summaryIndex).asVar.definedBy.map(i =>
+                    InstanceField(i, callStmt.declaringClass.mostPreciseObjectType, fieldName))
+            case BaseObjectSummaryTaint(fieldName) if callStmt.receiverOption.isDefined =>
+                callStmt.receiverOption.get.asVar.definedBy.map(i =>
+                    InstanceField(i, callStmt.declaringClass.mostPreciseObjectType, fieldName))
             case ReturnSummaryTaint() if call.stmt.isAssignment =>
                 Set(Variable(call.index))
+            case ReturnSummaryTaintWithField(fieldName) if call.stmt.isAssignment =>
+                Set(InstanceField(call.index, callStmt.declaringClass.mostPreciseObjectType, fieldName))
             case _ => Set.empty
         }
     }
 }
 
 object Flow {
+    val firstFieldPattern: Regex = """\[[A-Za-z\.\[\]]*?: [A-Za-z\.\[\]]*? ([a-zA-z]*?)[,\]]""".r
+
+    private def getFieldNameFromAttribute(attr: String): String = {
+        firstFieldPattern.findFirstMatchIn(attr) match {
+            case Some(m) => m.group(1)
+            case None    => throw new RuntimeException("Failed to parse Access Path: "+attr)
+        }
+    }
+
     /**
      * Maps a 'from' or 'to' XML node to an SummaryTaint
+     *
      * @param node 'from' or 'to' node
      * @return SummaryTaint
      */
     def nodeToTaint(node: Node): SummaryTaint = {
         // TODO: Fields on returns/parameters
-        node \@ "sourceSinkType" match {
-            case "Parameter" => ParameterSummaryTaint((node \@ "ParameterIndex").toInt - 2)
-            case "Field" =>
-                BaseObjectSummaryTaint((node \@ "AccessPath")
-                    .split(" ")
-                    .last
-                    .replace("]", ""))
-            case "Return" => ReturnSummaryTaint()
+        (node \@ "sourceSinkType", node \@ "AccessPath") match {
+            case ("Parameter", "") =>
+                ParameterSummaryTaint((node \@ "ParameterIndex").toInt - 2)
+            case ("Parameter", attr) =>
+                ParameterSummaryTaintWithField(
+                    (node \@ "ParameterIndex").toInt - 2,
+                    getFieldNameFromAttribute(attr)
+                )
+            case ("Field", attr)  => BaseObjectSummaryTaint(getFieldNameFromAttribute(attr))
+            case ("Return", "")   => ReturnSummaryTaint()
+            case ("Return", attr) => ReturnSummaryTaintWithField(getFieldNameFromAttribute(attr))
         }
     }
 }
 
 trait SummaryTaint
 case class ParameterSummaryTaint(index: Int) extends SummaryTaint
+case class ParameterSummaryTaintWithField(index: Int, fieldName: String) extends SummaryTaint
 case class BaseObjectSummaryTaint(fieldName: String) extends SummaryTaint
 case class ReturnSummaryTaint() extends SummaryTaint
+case class ReturnSummaryTaintWithField(fieldName: String) extends SummaryTaint

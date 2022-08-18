@@ -23,7 +23,7 @@ public class Java2JsTestClass {
         String pw = source();
 
         se.put("secret", pw);
-
+        se.eval("var x = 42;");
         String fromJS = (String) se.get("secret");
         sink(fromJS);
         System.out.println(fromJS);

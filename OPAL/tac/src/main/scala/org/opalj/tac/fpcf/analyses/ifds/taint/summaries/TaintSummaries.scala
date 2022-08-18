@@ -1,22 +1,71 @@
 /* BSD 2-Clause License - see OPAL/LICENSE for details. */
 package org.opalj.tac.fpcf.analyses.ifds.taint.summaries
 
-import org.opalj.br.{ArrayType, BooleanType, ByteType, CharType, FieldType, IntegerType, ObjectType, ShortType, Type, VoidType}
+import org.opalj.br.{ArrayType, BooleanType, ByteType, CharType, DoubleType, FieldType, FloatType, IntegerType, LongType, Method, ObjectType, ShortType, Type, VoidType}
 import org.opalj.tac.Call
 import org.opalj.tac.fpcf.analyses.ifds.JavaIFDSProblem.V
 import org.opalj.tac.fpcf.analyses.ifds.{JavaIFDSProblem, JavaStatement}
 import org.opalj.tac.fpcf.analyses.ifds.taint.{ArrayElement, InstanceField, TaintFact, TaintNullFact, Variable}
 import org.opalj.tac.fpcf.analyses.ifds.taint.summaries.Flow.nodeToTaint
-import org.opalj.tac.fpcf.analyses.ifds.taint.summaries.TaintSummary.{signaturePattern, stringToFieldType, stringToReturnType}
+import org.opalj.tac.fpcf.analyses.ifds.taint.summaries.ClassSummary.{signaturePattern, stringToFieldType, stringToType}
 
+import java.io.File
 import scala.util.matching.Regex
-import scala.xml.Node
+import scala.xml.{Node, XML}
 
 /**
- * Class which holds the methods summaries for a single class.
+ * Holds summaries for all classes.
+ * @param files summary XML files
+ */
+case class TaintSummaries(files: List[File]) {
+    val summaries: Map[String, ClassSummary] =
+        (files.map(f => f.getName.replace(".xml", "").replace(".", "/"))
+            zip
+            files.map(f => new ClassSummary(XML.loadFile(f)))).toMap
+
+    private def isSummarized(objType: ObjectType): Boolean =
+        summaries.contains(objType.fqn)
+
+    /**
+     * Return true if the method is summarized.
+     *
+     * @param callStmt call site in TACAI
+     * @return whether the method is summarized.
+     */
+    def isSummarized(callStmt: Call[JavaIFDSProblem.V]): Boolean =
+        isSummarized(callStmt.declaringClass.mostPreciseObjectType)
+
+    /**
+     * Return true if the method is summarized.
+     * @param method callee
+     * @return whether the method is summarized.
+     */
+    def isSummarized(method: Method): Boolean =
+        isSummarized(method.classFile.thisType)
+
+    /**
+     * Applies the summary if available, else does nothing.
+     *
+     * Precondition: callee class is summarized.
+     *
+     * @param call     call java statement
+     * @param callStmt call TAC statement
+     * @param in       fact
+     * @return out set of facts
+     */
+    def compute(call: JavaStatement, callStmt: Call[V], in: TaintFact): Set[TaintFact] = {
+        val classFqn = callStmt.declaringClass.mostPreciseObjectType.fqn
+        assert(summaries.contains(classFqn))
+
+        summaries(classFqn).compute(call, callStmt, in)
+    }
+}
+
+/**
+ * Holds the methods summaries for a single class.
  * @param summaryNode 'summary' XML node
  */
-class TaintSummary(summaryNode: Node) {
+case class ClassSummary(summaryNode: Node) {
     def methods: Seq[MethodSummary] = (summaryNode \\ "methods" \\ "method")
         .map(methodNode => {
             val sig = (methodNode \@ "id")
@@ -27,11 +76,11 @@ class TaintSummary(summaryNode: Node) {
                     val paramTypes: List[FieldType] =
                         if (m.group(3) == "") List()
                         else m.group(3)
-                              .split(",")
-                              .map(s => stringToFieldType(s.strip()))
-                              .toList
+                            .split(",")
+                            .map(s => stringToFieldType(s.strip()))
+                            .toList
                     MethodSummary(
-                        stringToReturnType(m.group(1)),
+                        stringToType(m.group(1)),
                         m.group(2),
                         paramTypes,
                         methodNode
@@ -42,7 +91,7 @@ class TaintSummary(summaryNode: Node) {
         }).toList
 
     /**
-     * Applies the summary.
+     * Applies the summary if available, else does nothing.
      * @param call call java statement
      * @param callStmt call TAC statement
      * @param in fact
@@ -66,7 +115,7 @@ class TaintSummary(summaryNode: Node) {
     }
 }
 
-object TaintSummary {
+object ClassSummary {
     /* group 1 = return type, group 2 = method name, group 3 = param list */
     val signaturePattern: Regex = """([a-zA-Z.\[\]]*?) ([a-zA-Z0-9_<>]*?)\(([a-zA-Z.\[\],\s]*?)\)""".r
 
@@ -82,9 +131,9 @@ object TaintSummary {
             case "char"    => CharType
             case "short"   => ShortType
             case "int"     => IntegerType
-            case "long"    => ObjectType.Long
-            case "float"   => ObjectType.Float
-            case "double"  => ObjectType.Double
+            case "long"    => LongType
+            case "float"   => FloatType
+            case "double"  => DoubleType
             case "String"  => ObjectType.String
             case _ =>
                 if (str.endsWith("[]"))
@@ -94,7 +143,7 @@ object TaintSummary {
         }
     }
 
-    def stringToReturnType(str: String): Type = {
+    def stringToType(str: String): Type = {
         str match {
             case "void" => VoidType
             case _      => stringToFieldType(str)
@@ -210,6 +259,6 @@ object Flow {
 }
 
 trait SummaryTaint
-case class ParameterSummaryTaint(idx: Int) extends SummaryTaint
+case class ParameterSummaryTaint(index: Int) extends SummaryTaint
 case class BaseObjectSummaryTaint(fieldName: String) extends SummaryTaint
 case class ReturnSummaryTaint() extends SummaryTaint

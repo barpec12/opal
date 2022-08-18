@@ -1,13 +1,12 @@
 /* BSD 2-Clause License - see OPAL/LICENSE for details. */
 package org.opalj.tac.fpcf.analyses.ifds.taint
 
-import scala.xml.XML
-import org.opalj.br.{FieldTypes, Method, ObjectType}
+import org.opalj.br.Method
 import org.opalj.br.analyses.{DeclaredMethodsKey, SomeProject}
 import org.opalj.ifds.Dependees.Getter
 import org.opalj.tac._
 import org.opalj.tac.fpcf.analyses.ifds.JavaIFDSProblem.V
-import org.opalj.tac.fpcf.analyses.ifds.taint.summaries.TaintSummary
+import org.opalj.tac.fpcf.analyses.ifds.taint.summaries.TaintSummaries
 import org.opalj.tac.fpcf.analyses.ifds.{JavaIFDSProblem, JavaMethod, JavaStatement}
 
 import java.io.File
@@ -18,11 +17,7 @@ abstract class ForwardTaintProblem(project: SomeProject)
     val declaredMethods = project.get(DeclaredMethodsKey)
 
     def useSummaries: Boolean = false
-    lazy val summaryFiles: Array[File] = new File(getClass.getResource("/summaries/").getPath).listFiles()
-    lazy val summaries: Map[String, TaintSummary] =
-        (summaryFiles.map(f => f.getName.replace(".xml", "").replace(".", "/"))
-            zip
-            summaryFiles.map(f => new TaintSummary(XML.loadFile(f)))).toMap
+    lazy val summaries: TaintSummaries = TaintSummaries(new File(getClass.getResource("/summaries/").getPath).listFiles().toList)
 
     override def nullFact: TaintFact = TaintNullFact
 
@@ -224,9 +219,8 @@ abstract class ForwardTaintProblem(project: SomeProject)
             }
         }
 
-        if (useSummaries && isSummarized(callStmt)) {
-            val summaryForClass = summaries(callStmt.declaringClass.mostPreciseObjectType.fqn)
-            summaryForClass.compute(call, callStmt, in)
+        if (useSummaries && summaries.isSummarized(callStmt)) {
+            summaries.compute(call, callStmt, in)
         } else if (icfg.getCalleesIfCallStatement(call).isEmpty) {
             // If the call does not have any callees, the code is unknown
             // and we safely handle it as the identity
@@ -237,9 +231,9 @@ abstract class ForwardTaintProblem(project: SomeProject)
                 // Local variables that are of a reference type flow through the callee
                 case Variable(index) if isRefTypeParam(index) => Set.empty
                 // Arrays are references passed-by-value, thus their contents might change in the callee
-                case ArrayElement(index, taintedIndex) if allParams.exists(p => p.asVar.definedBy.contains(index)) => Set.empty
+                case ArrayElement(index, _) if allParams.exists(p => p.asVar.definedBy.contains(index)) => Set.empty
                 // Fields can be written by reference, thus always through through the callee
-                case InstanceField(index, declClass, taintedField) if allParams.exists(p => p.asVar.definedBy.contains(index)) => Set.empty
+                case InstanceField(index, _, _) if allParams.exists(p => p.asVar.definedBy.contains(index)) => Set.empty
                 // Static fields are accessible everywhere, thus have to flow through all callee.
                 case StaticField(_, _) => Set.empty
                 // All facts that do not match any parameter or base object, as well as primitives flow over a call
@@ -270,23 +264,15 @@ abstract class ForwardTaintProblem(project: SomeProject)
     protected def createFlowFact(callee: Method, call: JavaStatement,
                                  in: TaintFact): Option[FlowFact]
 
-    private def isSummarized(objType: ObjectType, methodName: String, paramTypes: FieldTypes): Boolean =
-        summaries.contains(objType.fqn)
-
-    def isSummarized(callStmt: Call[JavaIFDSProblem.V]): Boolean =
-        isSummarized(callStmt.declaringClass.mostPreciseObjectType, callStmt.name, callStmt.descriptor.parameterTypes)
-
-    def isSummarized(method: Method): Boolean =
-        isSummarized(method.classFile.thisType, method.name, method.parameterTypes)
-
     /**
      * If a parameter is tainted, the result will also be tainted.
      * We assume that the callee does not call the source method.
      */
     override def outsideAnalysisContext(callee: Method): Option[OutsideAnalysisContextHandler] = {
-        if (useSummaries && isSummarized(callee))
+        if (useSummaries && summaries.isSummarized(callee)) {
+            /* Kill the flow and apply the summary in CallToReturn. */
             Some(((_: JavaStatement, _: JavaStatement, _: TaintFact, _: Getter) => Set.empty): OutsideAnalysisContextHandler)
-        else
+        } else
             super.outsideAnalysisContext(callee) match {
                 case Some(_) => Some(((call: JavaStatement, successor: JavaStatement, in: TaintFact, _: Getter) => {
                     val allParams = JavaIFDSProblem.asCall(call.stmt).receiverOption ++ JavaIFDSProblem.asCall(call.stmt).params

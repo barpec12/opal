@@ -35,8 +35,8 @@ class LocalJSSourceFinder(val p: SomeProject) extends (JavaStatement => Set[Java
      * 3 ((Invocable) se).invokeFunction("myFunction", args...);
      * This functions finds "JS Code" given "se" at se.invokeFunction().
      *
-     * @param method method to be searched in
-     * @param obj    ScriptEngine variable
+     * @param javaStmt statement to start with
+     * @param arg    ScriptEngine variable
      * @return javascript source code
      */
     def findJSSourceOnInvokeFunction(javaStmt: JavaStatement, arg: Expr[V]): Set[JavaScriptSource] = {
@@ -97,15 +97,15 @@ class LocalJSSourceFinder(val p: SomeProject) extends (JavaStatement => Set[Java
     /**
      * Finds instance method calls.
      * @param method Method to search in.
-     * @param sites
-     * @param methodName
+     * @param sites def/use sites
+     * @param methodName searched method name as string
      * @return
      */
     def findCallOnObject(method: Method, sites: IntTrieSet, methodName: String): Set[Stmt[V]] = {
         val stmts = searchStmts(method, sites)
         stmts.map(stmt => maybeCall(stmt) match {
-            case Some(call) if (call.name.equals(methodName)) => Some(stmt)
-            case _                                            => None
+            case Some(call) if call.name.equals(methodName) => Some(stmt)
+            case _                                          => None
         }).filter(_.isDefined).map(_.get)
     }
 
@@ -120,7 +120,7 @@ class LocalJSSourceFinder(val p: SomeProject) extends (JavaStatement => Set[Java
         val resultSet: mutable.Set[JavaScriptSource] = mutable.Set()
 
         def findFileArg(sites: IntTrieSet): Unit = {
-            val calls = findCallOnObject(method, sites, "<init>");
+            val calls = findCallOnObject(method, sites, "<init>")
             calls.foreach(init => {
                 val defSitesOfFileSrc = init.asInstanceMethodCall.params.head.asVar.definedBy
                 val defs = searchStmts(method, defSitesOfFileSrc)
@@ -135,10 +135,10 @@ class LocalJSSourceFinder(val p: SomeProject) extends (JavaStatement => Set[Java
         }
 
         def findFileReaderArg(sites: IntTrieSet): Unit = {
-            val calls = findCallOnObject(method, sites, "<init>");
+            val calls = findCallOnObject(method, sites, "<init>")
             calls.foreach(init => {
                 val defSitesOfFileReaderSrc = init.asInstanceMethodCall.params.head.asVar.definedBy
-                val defs = searchStmts(method, defSitesOfFileReaderSrc);
+                val defs = searchStmts(method, defSitesOfFileReaderSrc)
                 defs.foreach {
                     /* FileReader fr = new FileReader(new File("path/to/src")); */
                     case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst =>

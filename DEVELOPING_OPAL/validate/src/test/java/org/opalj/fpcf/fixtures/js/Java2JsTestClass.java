@@ -26,7 +26,19 @@ public class Java2JsTestClass {
         se.eval("var x = 42;");
         String fromJS = (String) se.get("secret");
         sink(fromJS);
-        System.out.println(fromJS);
+    }
+
+    @ForwardFlowPath({"flowInsideJS"})
+    public static void flowInsideJS() throws ScriptException
+    {
+        ScriptEngineManager sem = new ScriptEngineManager();
+        ScriptEngine se = sem.getEngineByName("JavaScript");
+        String pw = source();
+
+        se.put("secret", pw);
+        se.eval("var xxx = secret;");
+        String fromJS = (String) se.get("xxx");
+        sink(fromJS);
     }
 
 //    @ForwardFlowPath({""})
@@ -37,12 +49,7 @@ public class Java2JsTestClass {
 //        String pw = source();
 //
 //        se.put("secret", pw);
-//        try {
-//            se.eval("secret = \"42\";");
-//        } catch (ScriptException e) {
-//            // never happens
-//        }
-//
+//        se.eval("secret = \"42\";");
 //        String fromJS = (String) se.get("secret");
 //        sink(fromJS);
 //    }

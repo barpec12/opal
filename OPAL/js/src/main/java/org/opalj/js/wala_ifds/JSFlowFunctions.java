@@ -29,8 +29,7 @@ class JSFlowFunctions implements IPartiallyBalancedFlowFunctions<BasicBlockInCon
         return new IUnaryFlowFunction() {
 
             private void propagate(SSAInstruction inst, Pair<Integer, BasicBlockInContext<IExplodedBasicBlock>> vn, MutableIntSet r) {
-                boolean propagates = inst instanceof SSAPhiInstruction || inst instanceof SSAPiInstruction
-                        || inst instanceof SSABinaryOpInstruction || inst instanceof SSAUnaryOpInstruction;
+                boolean propagates = inst instanceof SSAPhiInstruction || inst instanceof SSABinaryOpInstruction || inst instanceof SSAUnaryOpInstruction;
 
                 if (propagates) {
                     for (int i = 0; i < inst.getNumberOfUses(); i++) {
@@ -49,9 +48,7 @@ class JSFlowFunctions implements IPartiallyBalancedFlowFunctions<BasicBlockInCon
             public IntSet getTargets(int d1) {
                 Pair<Integer, BasicBlockInContext<IExplodedBasicBlock>> vn = domain.getMappedObject(d1);
                 MutableIntSet r = IntSetUtil.make(new int[] { domain.getMappedIndex(vn) });
-                dbb.iteratePhis().forEachRemaining((inst) -> {
-                    propagate(inst, vn, r);
-                });
+                dbb.iteratePhis().forEachRemaining((inst) -> propagate(inst, vn, r));
                 propagate(ebb.getInstruction(), vn, r);
 
                 return r;

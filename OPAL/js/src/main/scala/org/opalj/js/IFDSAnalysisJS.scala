@@ -11,11 +11,12 @@ import org.opalj.tac.fpcf.analyses.ifds.{JavaIFDSProblem, JavaMethod, JavaStatem
 import org.opalj.tac.fpcf.analyses.ifds.taint.{ArrayElement, FlowFact, ForwardTaintProblem, TaintFact, TaintNullFact, Variable}
 import org.opalj.value.ValueInformation
 
+import scala.annotation.nowarn
 import scala.collection.mutable
 
 class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
     final type TACAICode = TACode[TACMethodParameter, JavaIFDSProblem.V]
-    val tacaiKey: Method => AITACode[TACMethodParameter, ValueInformation] = p.get(ComputeTACAIKey);
+    val tacaiKey: Method => AITACode[TACMethodParameter, ValueInformation] = p.get(ComputeTACAIKey)
 
     /**
      * Called, when the exit to return facts are computed for some `callee` with the null fact and
@@ -51,10 +52,10 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
      * The entry points of this analysis.
      */
     override def entryPoints: Seq[(Method, TaintFact)] =
-        (for {
+        for {
             m <- p.allMethodsWithBody
             if m.name == "main"
-        } yield m -> TaintNullFact)
+        } yield m -> TaintNullFact
 
     /**
      * Checks, if some `callee` is a sanitizer, which sanitizes its return value.
@@ -120,10 +121,10 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
     }
 
     def killFlow(
-        call:            JavaStatement,
-        successor:       JavaStatement,
-        in:              TaintFact,
-        dependeesGetter: Getter
+        @nowarn call:            JavaStatement,
+        @nowarn successor:       JavaStatement,
+        @nowarn in:              TaintFact,
+        @nowarn dependeesGetter: Getter
     ): Set[TaintFact] = Set.empty
 
     val scriptEngineMethods: Map[ObjectType, List[String]] = Map(
@@ -180,7 +181,7 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
 
         if (!invokesScriptFunction(callStmt)) {
             in match {
-                case BindingFact(index, keyName) =>
+                case BindingFact(index, _) =>
                     if (JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index) == NO_MATCH)
                         return Set(in)
                     else

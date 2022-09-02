@@ -15,6 +15,8 @@ import org.opalj.br.analyses.SomeProject
 import org.opalj.js.wala_ifds.WalaJavaScriptIFDSTaintAnalysis
 import org.opalj.tac.fpcf.analyses.ifds.JavaStatement
 import org.opalj.tac.fpcf.analyses.ifds.taint.TaintFact
+import org.mozilla.javascript.Parser
+import org.mozilla.javascript.ast.{AstNode, AstRoot, Name, NodeVisitor}
 
 import java.io.File
 
@@ -22,6 +24,16 @@ class JavaScriptAnalysis(p: SomeProject) {
     type Domain = TabulationDomain[Pair[Integer, BasicBlockInContext[IExplodedBasicBlock]], BasicBlockInContext[IExplodedBasicBlock]]
 
     val sourceFinder = new LocalJSSourceFinder(p)
+    private class NameVisitor extends NodeVisitor {
+        var nameSet: Set[String] = Set()
+        override def visit(node: AstNode): Boolean = {
+            node match {
+                case n: Name => nameSet += n.getString
+                case _       =>
+            }
+            true
+        }
+    }
 
     def analyze(stmt: JavaStatement, in: BindingFact): Set[TaintFact] = {
         val sourceFiles = sourceFinder(stmt)
@@ -29,8 +41,15 @@ class JavaScriptAnalysis(p: SomeProject) {
     }
 
     def analyzeFile(sourceFile: JavaScriptSource, in: BindingFact): Set[BindingFact] = {
-        val beforeCode = s"function opal_source() { return \"secret\"; }\nfunction opal_last_stmt() { }\n\nvar ${in.keyName} = opal_source();\n"
-        val afterCode = s"\nopal_last_stmt();\n"
+        val parser: Parser = new Parser()
+        val root: AstRoot = parser.parse(sourceFile.asString, "fileName", 1)
+        val nameV = new NameVisitor()
+        root.visit(nameV)
+
+        //        val beforeCode = s"function opal_source() { return \"secret\"; }\nfunction opal_last_stmt() { }\n\nvar ${in.keyName} = opal_source();\n"
+        //        val afterCode = s"\nopal_last_stmt(${nameV.nameSet.mkString(", ")});\n"
+        val afterCode = ""
+        val beforeCode = ""
         val f: File = sourceFile.asFile(beforeCode, afterCode)
 
         JSCallGraphUtil.setTranslatorFactory(new CAstRhinoTranslatorFactory)
@@ -57,33 +76,47 @@ class JavaScriptAnalysis(p: SomeProject) {
                 case invInst: SSAAbstractInvokeInstruction =>
                     CG.getPossibleTargets(bb.getNode, invInst.getCallSite).forEach(target => {
                         if (target.getMethod.getDeclaringClass.getName.toString.endsWith("opal_last_stmt")) {
-                          /* Collect all tainted variables reaching the end of the JS script. */
-                          val it: IntIterator = r.intIterator()
-                          while (it.hasNext) {
-                            val vn = d.getMappedObject(it.next())
-                            varsAliveAfterJS ++= vn.snd.getNode.getIR.getLocalNames(1, vn.fst).toList
-                          }
+                            /* Collect all parameters.  */
+                            val paramIdx: MutableIntSet = IntSetUtil.make()
+                            for (i <- 1 until invInst.getNumberOfPositionalParameters) {
+                                paramIdx.add(inst.getUse(i))
+                            }
+
+                            /* Collect all tainted variables reaching the end of the JS script. */
+                            val it: IntIterator = r.intIterator()
+                            val taints: MutableIntSet = IntSetUtil.make()
+                            while (it.hasNext) {
+                                val vn = d.getMappedObject(it.next())
+                                taints.add(vn.fst)
+                            }
+
+                            val taintedParams: IntSet = taints.intersection(paramIdx)
+                            val taintedIt: IntIterator = taintedParams.intIterator()
+                            while (taintedIt.hasNext) {
+                                val idx = taintedIt.next()
+                                varsAliveAfterJS ++= bb.getNode.getIR.getLocalNames(1, idx).toList
+                            }
                         }
-                        if (target.getMethod.getDeclaringClass.getName.toString.endsWith("opal_sink")) {
-                          val it: IntIterator = r.intIterator()
-                          val taints: MutableIntSet = IntSetUtil.make()
-                          while (it.hasNext) {
-                            val vn = d.getMappedObject(it.next())
-                            taints.add(vn.fst)
-                          }
-                          val paramIdx: MutableIntSet = IntSetUtil.make()
-                          for (i <- 1 until invInst.getNumberOfPositionalParameters) {
-                            paramIdx.add(inst.getUse(i))
-                          }
-                          val taintedParams: IntSet = taints.intersection(paramIdx)
-                          if (taintedParams.size() > 0) {
-                            // TODO: taint ret val of ???
-                          }
-                        }
+                        //                        if (target.getMethod.getDeclaringClass.getName.toString.endsWith("opal_sink")) {
+                        //                          val it: IntIterator = r.intIterator()
+                        //                          val taints: MutableIntSet = IntSetUtil.make()
+                        //                          while (it.hasNext) {
+                        //                            val vn = d.getMappedObject(it.next())
+                        //                            taints.add(vn.fst)
+                        //                          }
+                        //                          val paramIdx: MutableIntSet = IntSetUtil.make()
+                        //                          for (i <- 1 until invInst.getNumberOfPositionalParameters) {
+                        //                            paramIdx.add(inst.getUse(i))
+                        //                          }
+                        //                          val taintedParams: IntSet = taints.intersection(paramIdx)
+                        //                          if (taintedParams.size() > 0) {
+                        //                            // TODO: taint ret val of ???
+                        //                          }
+                        //                        }
                     })
                 case _ =>
             }
-          null
+            null
         }
 
         WalaJavaScriptIFDSTaintAnalysis.startJSAnalysis(CG, sources, sinks)

@@ -17,44 +17,43 @@ public class Java2JsTestClass {
 
     /* Test flows through Javascript. */
 
-    @ForwardFlowPath({"flowThroughJS"})
-    public static void flowThroughJS() throws ScriptException
+//    @ForwardFlowPath({"flowThroughJS"})
+//    public static void flowThroughJS() throws ScriptException
+//    {
+//        ScriptEngineManager sem = new ScriptEngineManager();
+//        ScriptEngine se = sem.getEngineByName("JavaScript");
+//        String pw = source();
+//
+//        se.put("secret", pw);
+//        se.eval("var x = 42;");
+//        String fromJS = (String) se.get("secret");
+//        sink(fromJS);
+//    }
+
+    @ForwardFlowPath({"flowInsideJS"})
+    public static void flowInsideJS() throws ScriptException
     {
         ScriptEngineManager sem = new ScriptEngineManager();
         ScriptEngine se = sem.getEngineByName("JavaScript");
         String pw = source();
 
         se.put("secret", pw);
-        se.eval("var x = 42;");
+        se.eval("var xxx = secret;");
+        String fromJS = (String) se.get("xxx");
+        sink(fromJS);
+    }
+    @ForwardFlowPath({})
+    public static void jsOverwritesBinding() throws ScriptException
+    {
+        ScriptEngineManager sem = new ScriptEngineManager();
+        ScriptEngine se = sem.getEngineByName("JavaScript");
+        String pw = source();
+
+        se.put("secret", pw);
+        se.eval("secret = \"42\";");
         String fromJS = (String) se.get("secret");
         sink(fromJS);
     }
-
-//    @ForwardFlowPath({"flowInsideJS"})
-//    public static void flowInsideJS() throws ScriptException
-//    {
-//        ScriptEngineManager sem = new ScriptEngineManager();
-//        ScriptEngine se = sem.getEngineByName("JavaScript");
-//        String pw = source();
-//
-//        se.put("secret", pw);
-//        se.eval("var xxx = secret;");
-//        String fromJS = (String) se.get("xxx");
-//        sink(fromJS);
-//    }
-//
-//    @ForwardFlowPath({""})
-//    public static void jsOverwritesBinding() throws ScriptException
-//    {
-//        ScriptEngineManager sem = new ScriptEngineManager();
-//        ScriptEngine se = sem.getEngineByName("JavaScript");
-//        String pw = source();
-//
-//        se.put("secret", pw);
-//        se.eval("secret = \"42\";");
-//        String fromJS = (String) se.get("secret");
-//        sink(fromJS);
-//    }
 //
 //    /* Test retrieval of javascript sources. */
 //

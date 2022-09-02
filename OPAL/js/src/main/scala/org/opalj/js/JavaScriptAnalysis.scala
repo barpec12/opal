@@ -16,7 +16,7 @@ import org.opalj.js.wala_ifds.WalaJavaScriptIFDSTaintAnalysis
 import org.opalj.tac.fpcf.analyses.ifds.JavaStatement
 import org.opalj.tac.fpcf.analyses.ifds.taint.TaintFact
 import org.mozilla.javascript.Parser
-import org.mozilla.javascript.ast.{AstNode, AstRoot, Name, NodeVisitor}
+import org.mozilla.javascript.ast.{AstNode, AstRoot, Name, NodeVisitor, VariableInitializer}
 
 import java.io.File
 
@@ -24,15 +24,20 @@ class JavaScriptAnalysis(p: SomeProject) {
     type Domain = TabulationDomain[Pair[Integer, BasicBlockInContext[IExplodedBasicBlock]], BasicBlockInContext[IExplodedBasicBlock]]
 
     val sourceFinder = new LocalJSSourceFinder(p)
+
     private class NameVisitor extends NodeVisitor {
         var nameSet: Set[String] = Set()
         override def visit(node: AstNode): Boolean = {
             node match {
-                case n: Name => nameSet += n.getString
+                case n: Name if n.getParent.isInstanceOf[VariableInitializer] => nameSet += n.getString
                 case _       =>
             }
             true
         }
+    }
+
+    def generateParams(n: Int) = {
+        (0 until n).map(i => s"p${i}").mkString(", ")
     }
 
     def analyze(stmt: JavaStatement, in: BindingFact): Set[TaintFact] = {
@@ -42,14 +47,14 @@ class JavaScriptAnalysis(p: SomeProject) {
 
     def analyzeFile(sourceFile: JavaScriptSource, in: BindingFact): Set[BindingFact] = {
         val parser: Parser = new Parser()
-        val root: AstRoot = parser.parse(sourceFile.asString, "fileName", 1)
+
+        val taintedVar = s"var ${in.keyName} = opal_source();\n"
+        val root: AstRoot = parser.parse(taintedVar + sourceFile.asString, "fileName", 1)
         val nameV = new NameVisitor()
         root.visit(nameV)
 
-        //        val beforeCode = s"function opal_source() { return \"secret\"; }\nfunction opal_last_stmt() { }\n\nvar ${in.keyName} = opal_source();\n"
-        //        val afterCode = s"\nopal_last_stmt(${nameV.nameSet.mkString(", ")});\n"
-        val afterCode = ""
-        val beforeCode = ""
+        val beforeCode = s"function opal_source() { return \"secret\"; }\nfunction opal_last_stmt(${generateParams(nameV.nameSet.size)}) { }\n\n$taintedVar"
+        val afterCode = s"\nopal_last_stmt(${nameV.nameSet.mkString(", ")});\n"
         val f: File = sourceFile.asFile(beforeCode, afterCode)
 
         JSCallGraphUtil.setTranslatorFactory(new CAstRhinoTranslatorFactory)

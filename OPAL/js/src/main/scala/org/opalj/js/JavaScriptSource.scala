@@ -3,8 +3,23 @@ package org.opalj.js
 
 import java.io.{File, FileOutputStream}
 import java.nio.file.Files
+
+/**
+ * Common trait for representing JavaScript sources embedded in Java source code.
+ */
 sealed trait JavaScriptSource {
+    /**
+     * Return the JavaScript source code as a string.
+     * @return JavaScript source
+     */
     def asString: String
+
+    /**
+     *
+     * @param codeBefore Code to be added in front of the script.
+     * @param codeAfter Code to be added at the end of the script.
+     * @return file handler
+     */
     def asFile(codeBefore: String, codeAfter: String): File
 }
 
@@ -23,7 +38,7 @@ case class JavaScriptStringSource(source: String) extends JavaScriptSource {
 }
 
 case class JavaScriptFileSource(path: String) extends JavaScriptSource {
-    override def asString: String = path
+    override def asString: String = throw new RuntimeException("Not implemented!")
 
-    override def asFile(codeBefore: String, codeAfter: String): File = null
+    override def asFile(codeBefore: String, codeAfter: String): File = throw new RuntimeException("Not implemented!")
 }

@@ -15,7 +15,7 @@ import scala.collection.mutable
  * Uses the def-use information of TACAI to find the javascript sources passed
  * to an ScriptEngine within method boundaries.
  *
- * @param p Java Project
+ * @param p Project
  */
 class LocalJSSourceFinder(val p: SomeProject) extends (JavaStatement => Set[JavaScriptSource]) {
     final type TACAICode = TACode[TACMethodParameter, JavaIFDSProblem.V]

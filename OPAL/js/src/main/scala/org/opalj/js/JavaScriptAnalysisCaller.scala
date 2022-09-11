@@ -57,6 +57,7 @@ class JavaScriptAnalysisCaller(p: SomeProject) {
 
     /**
      * Return all variable names that are in the top level scope.
+     *
      * @param root root AST node of the script
      * @return set of variable names
      */
@@ -73,9 +74,10 @@ class JavaScriptAnalysisCaller(p: SomeProject) {
     }
 
     /**
+     * Return the corresponding function node for the function symbol.
      *
-     * @param func
-     * @return
+     * @param func function symbol
+     * @return function node
      */
     private def getFunctionNode(func: Symbol): FunctionNode = {
         class fnFinder extends NodeVisitor {

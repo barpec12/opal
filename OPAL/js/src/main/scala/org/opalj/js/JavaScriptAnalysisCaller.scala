@@ -227,8 +227,6 @@ class JavaScriptAnalysisCaller(p: SomeProject) {
 
         def sinks(bb: BasicBlockInContext[IExplodedBasicBlock], r: IntSet, d: Domain): Void = {
             val inst = bb.getDelegate.getInstruction
-            if (inst != null)
-                println(inst.toString)
             inst match {
                 case invInst: SSAAbstractInvokeInstruction =>
                     CG.getPossibleTargets(bb.getNode, invInst.getCallSite).forEach(target => {

@@ -26,6 +26,9 @@ class LocalJSSourceFinder(val p: SomeProject) extends (JavaStatement => Set[Java
     /* Maps the statement to search from to the resulting set of JavaScriptSources.  */
     val jsSourceCache: mutable.Map[(JavaStatement, Expr[V]), Set[JavaScriptSource]] = mutable.Map()
 
+    /**
+     * @see [[LocalJSSourceFinder.findJSSourceOnInvokeFunction()]]
+     */
     override def apply(stmt: JavaStatement): Set[JavaScriptSource] = findJSSourceOnInvokeFunction(stmt, JavaIFDSProblem.asCall(stmt.stmt).allParams.head.asVar)
 
     /**
@@ -39,7 +42,7 @@ class LocalJSSourceFinder(val p: SomeProject) extends (JavaStatement => Set[Java
      * @param arg    ScriptEngine variable
      * @return javascript source code
      */
-    def findJSSourceOnInvokeFunction(javaStmt: JavaStatement, arg: Expr[V]): Set[JavaScriptSource] = {
+    private def findJSSourceOnInvokeFunction(javaStmt: JavaStatement, arg: Expr[V]): Set[JavaScriptSource] = {
         val decls = findCallOnObject(javaStmt.method, arg.asVar.definedBy, "getEngineByName")
 
         val maybeCached = jsSourceCache.get((javaStmt, arg))
@@ -47,7 +50,11 @@ class LocalJSSourceFinder(val p: SomeProject) extends (JavaStatement => Set[Java
             maybeCached.get
         else
             decls.flatMap(decl => {
-                val evals = findCallOnObject(javaStmt.method, decl.asAssignment.targetVar.usedBy, "eval")
+                val evals = findCallOnObject(
+                    javaStmt.method,
+                    decl.asAssignment.targetVar.usedBy,
+                    "eval"
+                )
                 val jsSources = evals.flatMap(eval => {
                     val evalCall = JavaIFDSProblem.asCall(eval)
                     varToJavaScriptSource(javaStmt.method, evalCall.params.head.asVar)
@@ -64,7 +71,7 @@ class LocalJSSourceFinder(val p: SomeProject) extends (JavaStatement => Set[Java
      * @param sites  definition or use sites
      * @return sites as JavaStatement
      */
-    def searchStmts(method: Method, sites: IntTrieSet): Set[Stmt[JavaIFDSProblem.V]] = {
+    private def searchStmts(method: Method, sites: IntTrieSet): Set[Stmt[JavaIFDSProblem.V]] = {
         val taCode = tacaiKey(method)
         sites.map(site => taCode.stmts.apply(site))
     }
@@ -75,7 +82,7 @@ class LocalJSSourceFinder(val p: SomeProject) extends (JavaStatement => Set[Java
      * @param stmt Statement
      * @return maybe a function call
      */
-    def maybeCall(stmt: Stmt[JavaIFDSProblem.V]): Option[Call[JavaIFDSProblem.V]] = {
+    private def maybeCall(stmt: Stmt[JavaIFDSProblem.V]): Option[Call[JavaIFDSProblem.V]] = {
         def isCall(node: ASTNode[JavaIFDSProblem.V]) = node match {
             case expr: Expr[JavaIFDSProblem.V] => expr.isVirtualFunctionCall || expr.isStaticFunctionCall
             case stmt: Stmt[JavaIFDSProblem.V] => (stmt.isNonVirtualMethodCall
@@ -96,12 +103,13 @@ class LocalJSSourceFinder(val p: SomeProject) extends (JavaStatement => Set[Java
 
     /**
      * Finds instance method calls.
+     *
      * @param method Method to search in.
      * @param sites def/use sites
      * @param methodName searched method name as string
      * @return
      */
-    def findCallOnObject(method: Method, sites: IntTrieSet, methodName: String): Set[Stmt[V]] = {
+    private def findCallOnObject(method: Method, sites: IntTrieSet, methodName: String): Set[Stmt[V]] = {
         val stmts = searchStmts(method, sites)
         stmts.map(stmt => maybeCall(stmt) match {
             case Some(call) if call.name.equals(methodName) => Some(stmt)
@@ -116,7 +124,7 @@ class LocalJSSourceFinder(val p: SomeProject) extends (JavaStatement => Set[Java
      * @param variable variable of interest
      * @return JavaScriptSource
      */
-    def varToJavaScriptSource(method: Method, variable: JavaIFDSProblem.V): Set[JavaScriptSource] = {
+    private def varToJavaScriptSource(method: Method, variable: JavaIFDSProblem.V): Set[JavaScriptSource] = {
         val resultSet: mutable.Set[JavaScriptSource] = mutable.Set()
 
         def findFileArg(sites: IntTrieSet): Unit = {
@@ -127,7 +135,8 @@ class LocalJSSourceFinder(val p: SomeProject) extends (JavaStatement => Set[Java
                 defs.foreach {
                     /* new File("path/to/src"); */
                     case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst =>
-                    //            resultSet.add(statementToJavaScriptSource.getOrElseUpdate(a, JavaScriptFileSource(a.expr.asStringConst.value)))
+                    //                        resultSet.add(statementToJavaScriptSource.getOrElseUpdate(a,
+                    //                            JavaScriptFileSource(a.expr.asStringConst.value)))
                     /* File constructor argument is no string constant */
                     case _ =>
                 }
@@ -142,7 +151,8 @@ class LocalJSSourceFinder(val p: SomeProject) extends (JavaStatement => Set[Java
                 defs.foreach {
                     /* FileReader fr = new FileReader(new File("path/to/src")); */
                     case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst =>
-                    //            resultSet.add(statementToJavaScriptSource.getOrElseUpdate(a, JavaScriptFileSource(a.expr.asStringConst.value)))
+                    //                        resultSet.add(statementToJavaScriptSource.getOrElseUpdate(a,
+                    //                            JavaScriptFileSource(a.expr.asStringConst.value)))
                     /* new FileReader(new File(...)); */
                     case a: Assignment[JavaIFDSProblem.V] if a.expr.isNew =>
                         if (a.expr.asNew.tpe.isSubtypeOf(ObjectType("java/io/File"))(p.classHierarchy))

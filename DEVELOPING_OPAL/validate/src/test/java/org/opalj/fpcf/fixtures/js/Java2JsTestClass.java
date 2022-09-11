@@ -4,12 +4,6 @@ import org.opalj.fpcf.properties.taint.ForwardFlowPath;
 
 import javax.script.*;
 
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-
-import static java.lang.Integer.parseInt;
-
 public class Java2JsTestClass {
     private static int staticField;
 
@@ -17,18 +11,18 @@ public class Java2JsTestClass {
 
     /* Test flows through Javascript. */
 
-//    @ForwardFlowPath({"flowThroughJS"})
-//    public static void flowThroughJS() throws ScriptException
-//    {
-//        ScriptEngineManager sem = new ScriptEngineManager();
-//        ScriptEngine se = sem.getEngineByName("JavaScript");
-//        String pw = source();
-//
-//        se.put("secret", pw);
-//        se.eval("var x = 42;");
-//        String fromJS = (String) se.get("secret");
-//        sink(fromJS);
-//    }
+    @ForwardFlowPath({"flowThroughJS"})
+    public static void flowThroughJS() throws ScriptException
+    {
+        ScriptEngineManager sem = new ScriptEngineManager();
+        ScriptEngine se = sem.getEngineByName("JavaScript");
+        String pw = source();
+
+        se.put("secret", pw);
+        se.eval("var x = 42;");
+        String fromJS = (String) se.get("secret");
+        sink(fromJS);
+    }
 
     @ForwardFlowPath({"flowInsideJS"})
     public static void flowInsideJS() throws ScriptException
@@ -42,6 +36,7 @@ public class Java2JsTestClass {
         String fromJS = (String) se.get("xxx");
         sink(fromJS);
     }
+
     @ForwardFlowPath({})
     public static void jsOverwritesBinding() throws ScriptException
     {
@@ -54,55 +49,62 @@ public class Java2JsTestClass {
         String fromJS = (String) se.get("secret");
         sink(fromJS);
     }
-//
-//    /* Test retrieval of javascript sources. */
-//
-//    @ForwardFlowPath({"simpleScriptEngineWithString"})
-//    public static void simpleScriptEngineWithString() throws ScriptException
-//    {
-//        ScriptEngineManager sem = new ScriptEngineManager();
-//        ScriptEngine se = sem.getEngineByName("JavaScript");
-//        try {
-//            se.eval("function check(str) {\n" +
-//                    "    return str === \"1337\";\n" +
-//                    "}");
-//        } catch (ScriptException e) {
-//            // never happens
-//        }
-//        String pw = source();
-//
-//        Invocable inv = (Invocable) se;
-//        try {
-//            Boolean state = (Boolean) inv.invokeFunction("check", pw);
-//            sink(state);
-//        } catch (NoSuchMethodException e) {
-//            // never happens
-//        }
-//    }
-//
-//    @ForwardFlowPath({"simpleScriptEngineWithFile"})
-//    public static void simpleScriptEngineWithFile() throws ScriptException
-//    {
-//        ScriptEngineManager sem = new ScriptEngineManager();
-//        ScriptEngine se = sem.getEngineByName("JavaScript");
-//        try {
-//            se.eval(new FileReader("check.js"));
-//        } catch (ScriptException e) {
-//            // never happens
-//        } catch (FileNotFoundException e) {
-//            // ignore
-//        }
-//
-//        String pw = source();
-//
-//        Invocable inv = (Invocable) se;
-//        try {
-//            Boolean state = (Boolean) inv.invokeFunction("check", pw);
-//            sink(state);
-//        } catch (NoSuchMethodException e) {
-//            // never happens
-//        }
-//    }
+
+    @ForwardFlowPath({"jsInvokeIdentity"})
+    public static void jsInvokeIdentity() throws ScriptException, NoSuchMethodException
+    {
+        ScriptEngineManager sem = new ScriptEngineManager();
+        ScriptEngine se = sem.getEngineByName("JavaScript");
+        String pw = source();
+
+        se.eval("function id(x) { return x; }");
+        String fromJS = (String) ((Invocable) se).invokeFunction("id", pw);
+        sink(fromJS);
+    }
+
+    @ForwardFlowPath({})
+    public static void jsInvokeOverwrite() throws ScriptException, NoSuchMethodException
+    {
+        ScriptEngineManager sem = new ScriptEngineManager();
+        ScriptEngine se = sem.getEngineByName("JavaScript");
+        String pw = source();
+
+        se.eval("function overwrite(x) { return \"42\"; }");
+        String fromJS = (String) ((Invocable) se).invokeFunction("id", pw);
+        sink(fromJS);
+    }
+
+    @ForwardFlowPath({"jsInvokeWithComputation"})
+    public static void jsInvokeWithComputation() throws ScriptException, NoSuchMethodException
+    {
+        ScriptEngineManager sem = new ScriptEngineManager();
+        ScriptEngine se = sem.getEngineByName("JavaScript");
+        se.eval("function check(str) {\n" +
+                "    return str === \"1337\";\n" +
+                "}");
+
+        String pw = source();
+
+        Invocable inv = (Invocable) se;
+        Boolean state = (Boolean) inv.invokeFunction("check", pw);
+        sink(state);
+    }
+
+    @ForwardFlowPath({})
+    public static void jsUnusedTaintAsParameter() throws ScriptException, NoSuchMethodException
+    {
+        ScriptEngineManager sem = new ScriptEngineManager();
+        ScriptEngine se = sem.getEngineByName("JavaScript");
+        se.eval("function check(str, unused) {\n" +
+                "    return str === \"1337\";\n" +
+                "}");
+
+        String pw = source();
+        Invocable inv = (Invocable) se;
+        Boolean state = (Boolean) inv.invokeFunction("check", "1337", pw);
+        sink(state);
+    }
+
 //
 //    /* Test flows through ScriptEngine objects. */
 //

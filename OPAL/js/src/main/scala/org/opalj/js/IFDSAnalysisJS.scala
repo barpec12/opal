@@ -94,7 +94,8 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
         }
     }
 
-    override def returnFlow(exit: JavaStatement, in: TaintFact, call: JavaStatement, callFact: TaintFact, successor: JavaStatement): Set[TaintFact] = {
+    override def returnFlow(exit: JavaStatement, in: TaintFact, call: JavaStatement,
+                            callFact: TaintFact, successor: JavaStatement): Set[TaintFact] = {
         if (!isPossibleReturnFlow(exit, successor)) return Set.empty
         val callee = exit.callable
         if (sanitizesReturnValue(callee)) return Set.empty
@@ -134,7 +135,8 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
     )
 
     /**
-     * Checks whether we handle the method
+     * Checks whether we handle the method.
+     *
      * @param objType type of the base object
      * @param methodName method name of the call
      * @return true if we have a rule for the method call
@@ -172,7 +174,7 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
         sites.map(site => taCode.stmts.apply(site))
     }
 
-    val jsAnalysis = new JavaScriptAnalysis(p)
+    val jsAnalysis = new JavaScriptAnalysisCaller(p)
 
     override def callToReturnFlow(call: JavaStatement, in: TaintFact, successor: JavaStatement): Set[TaintFact] = {
         val callStmt = JavaIFDSProblem.asCall(call.stmt)
@@ -192,9 +194,16 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
 
         in match {
             // invokeFunction takes a function name and a variable length argument. This is always an array in TACAI.
-            case ArrayElement(index, taintedIndex) if callStmt.name == "invokeFunction" && JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index) == -3 =>
-                // TODO: actually model
-                return Set(Variable(call.index))
+            case arrIn: ArrayElement if callStmt.name == "invokeFunction"
+                && JavaIFDSProblem.getParameterIndex(allParamsWithIndex, arrIn.index) == -3 =>
+                var taints: Set[TaintFact] = Set()
+                searchStmts(call.method, allParams(1).asVar.definedBy).foreach {
+                    case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst =>
+                        val fName = a.expr.asStringConst.value
+                        taints ++= jsAnalysis.analyze(call, arrIn, fName)
+                    case _ =>
+                }
+                return taints
             /* put obj in Binding */
             case Variable(index) if callStmt.name == "put" && JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index) == -3 =>
                 val taints = mutable.Set(in)

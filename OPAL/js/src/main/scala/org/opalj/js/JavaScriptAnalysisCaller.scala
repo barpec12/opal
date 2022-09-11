@@ -146,10 +146,13 @@ class JavaScriptAnalysisCaller(p: SomeProject) {
             return Set()
 
         val nameSet: Set[String] = getTopLevelVariableNames(root)+"opal_tainted_return"
-        val beforeCode = s"""function opal_source() { return \"secret\"; }
-                 |function opal_last_stmt(${generateParams(nameSet.size)}) { }
-                 |\n""".stripMargin
-        val funcCall = s"var opal_tainted_return = $fName(${generateFunctionArgs(fNode.getParamCount, in.element)});\n"
+        val beforeCode =
+            s"""function opal_source() {
+               |    return \"secret\";
+               |}
+               |function opal_last_stmt(${generateParams(nameSet.size)}) { }
+               |\n""".stripMargin
+        val funcCall = s"var opal_tainted_return = $fName(${generateFunctionArgs(fNode.getParamCount, in.element)});"
         val afterCode = s"""
                  |var opal_fill_arg = 42;
                  |var opal_tainted_arg = opal_source();
@@ -184,7 +187,9 @@ class JavaScriptAnalysisCaller(p: SomeProject) {
         val nameSet: Set[String] = getTopLevelVariableNames(root)
 
         val beforeCode =
-            s"""function opal_source() { return \"secret\"; }
+            s"""function opal_source() {
+               |    return \"secret\";
+               |}
                |function opal_last_stmt(${generateParams(nameSet.size)}) { }
                |\n
                |$taintedVar""".stripMargin
@@ -222,6 +227,8 @@ class JavaScriptAnalysisCaller(p: SomeProject) {
 
         def sinks(bb: BasicBlockInContext[IExplodedBasicBlock], r: IntSet, d: Domain): Void = {
             val inst = bb.getDelegate.getInstruction
+            if (inst != null)
+                println(inst.toString)
             inst match {
                 case invInst: SSAAbstractInvokeInstruction =>
                     CG.getPossibleTargets(bb.getNode, invInst.getCallSite).forEach(target => {

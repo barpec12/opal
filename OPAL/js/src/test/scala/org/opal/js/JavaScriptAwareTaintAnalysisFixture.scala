@@ -6,7 +6,7 @@ import org.opalj.br.analyses.{DeclaredMethodsKey, ProjectInformationKeys, SomePr
 import org.opalj.br.fpcf.PropertyStoreKey
 import org.opalj.fpcf.{PropertyBounds, PropertyStore}
 import org.opalj.ifds.{IFDSAnalysis, IFDSAnalysisScheduler, IFDSPropertyMetaInformation}
-import org.opalj.js.IFDSAnalysisJS
+import org.opalj.js.JavaScriptAwareTaintAnalysis
 import org.opalj.tac.cg.TypeProviderKey
 import org.opalj.tac.fpcf.analyses.ifds.taint.{TaintFact, FlowFact, TaintNullFact, Variable}
 import org.opalj.tac.fpcf.analyses.ifds.{JavaMethod, JavaStatement}
@@ -18,10 +18,10 @@ import org.opalj.tac.fpcf.properties.Taint
  *
  * @author Mario Trageser
  */
-class IFDSAnalysisJSFixture(project: SomeProject)
-    extends IFDSAnalysis()(project, new IFDSAnalysisJSProblemFixture(project), Taint)
+class JavaScriptAwareTaintAnalysisFixture(project: SomeProject)
+    extends IFDSAnalysis()(project, new JavaScriptAwareTaintAnalysisProblemFixture(project), Taint)
 
-class IFDSAnalysisJSProblemFixture(p: SomeProject) extends IFDSAnalysisJS(p) {
+class JavaScriptAwareTaintAnalysisProblemFixture(p: SomeProject) extends JavaScriptAwareTaintAnalysis(p) {
     override def useSummaries = true
 
     /**
@@ -62,7 +62,7 @@ class IFDSAnalysisJSProblemFixture(p: SomeProject) extends IFDSAnalysisJS(p) {
 }
 
 object IFDSAnalysisJSFixtureScheduler extends IFDSAnalysisScheduler[TaintFact, Method, JavaStatement] {
-    override def init(p: SomeProject, ps: PropertyStore) = new IFDSAnalysisJSFixture(p)
+    override def init(p: SomeProject, ps: PropertyStore) = new JavaScriptAwareTaintAnalysisFixture(p)
     override def property: IFDSPropertyMetaInformation[JavaStatement, TaintFact] = Taint
     override val uses: Set[PropertyBounds] = Set(PropertyBounds.ub(Taint))
     override def requiredProjectInformation: ProjectInformationKeys = Seq(TypeProviderKey, DeclaredMethodsKey, PropertyStoreKey)

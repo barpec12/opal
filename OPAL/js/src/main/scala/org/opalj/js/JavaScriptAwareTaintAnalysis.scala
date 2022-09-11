@@ -14,7 +14,7 @@ import org.opalj.value.ValueInformation
 import scala.annotation.nowarn
 import scala.collection.mutable
 
-class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
+class JavaScriptAwareTaintAnalysis(p: SomeProject) extends ForwardTaintProblem(p) {
     final type TACAICode = TACode[TACMethodParameter, JavaIFDSProblem.V]
     val tacaiKey: Method => AITACode[TACMethodParameter, ValueInformation] = p.get(ComputeTACAIKey)
 
@@ -163,7 +163,7 @@ class IFDSAnalysisJS(p: SomeProject) extends ForwardTaintProblem(p) {
     }
 
     /**
-     * Finds all definiton/use sites inside the method.
+     * Finds all definition/use sites inside the method.
      *
      * @param method method to be searched in
      * @param sites  definition or use sites

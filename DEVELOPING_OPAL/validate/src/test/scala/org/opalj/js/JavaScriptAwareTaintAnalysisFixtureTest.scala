@@ -12,7 +12,7 @@ import org.opalj.tac.fpcf.analyses.ifds.taint.TaintNullFact
 
 import java.net.URL
 
-class IFDSAnalysisJSFixtureTest extends PropertiesTest {
+class JavaScriptAwareTaintAnalysisFixtureTest extends PropertiesTest {
     override def fixtureProjectPackage: List[String] = List(
         "org/opalj/fpcf/fixtures/js"
     )

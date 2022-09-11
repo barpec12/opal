@@ -22,6 +22,7 @@ class JavaScriptAwareTaintAnalysisFixture(project: SomeProject)
     extends IFDSAnalysis()(project, new JavaScriptAwareTaintAnalysisProblemFixture(project), Taint)
 
 class JavaScriptAwareTaintAnalysisProblemFixture(p: SomeProject) extends JavaScriptAwareTaintAnalysis(p) {
+    /* Without, the tests are unbearably slow. */
     override def useSummaries = true
 
     /**

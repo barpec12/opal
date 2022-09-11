@@ -301,7 +301,6 @@ object Flow {
      * @return SummaryTaint
      */
     def nodeToTaint(node: Node): SummaryTaint = {
-        // TODO: Fields on returns/parameters
         (node \@ "sourceSinkType", node \@ "AccessPath") match {
             case ("Parameter", "") =>
                 ParameterSummaryTaint((node \@ "ParameterIndex").toInt - 2)

@@ -263,7 +263,7 @@ class JavaScriptAnalysisCaller(p: SomeProject) {
         }
 
         WalaJavaScriptIFDSTaintAnalysis.startJSAnalysis(CG, sources, sinks)
-        f.delete()
+//        f.delete()
         varNamesToFacts(varsAliveAfterJS, idx)
     }
 }

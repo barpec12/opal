@@ -14,7 +14,6 @@ import org.opalj.log.LogContext
 import org.opalj.util.ScalaMajorVersion
 import org.opalj.fpcf.properties.PropertyMatcher
 import org.opalj.fpcf.seq.PKESequentialPropertyStore
-//import org.opalj.bytecode.{JRELibraryFolder, RTJar}
 import org.opalj.br.DefinedMethod
 import org.opalj.br.analyses.VirtualFormalParameter
 import org.opalj.br.analyses.VirtualFormalParametersKey
@@ -60,7 +59,6 @@ abstract class PropertiesTest extends AnyFunSpec with Matchers {
     )
 
     def withRT = false
-    def withFullLib = false
 
     /**
      * The representation of the fixture project.
@@ -82,8 +80,7 @@ abstract class PropertiesTest extends AnyFunSpec with Matchers {
             cf.thisType.packageName.startsWith("org/opalj/fpcf/properties")
         }
 
-        val libraryClassFiles = (if (withRT) ClassFiles(RTJar) else List()) ++
-            (if (withFullLib) ClassFiles(JRELibraryFolder) else List()) ++ propertiesClassFiles
+        val libraryClassFiles = (if (withRT) ClassFiles(RTJar) else List()) ++ propertiesClassFiles
 
         implicit val config: Config = createConfig()
 

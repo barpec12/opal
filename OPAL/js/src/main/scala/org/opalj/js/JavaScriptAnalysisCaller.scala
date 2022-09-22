@@ -41,7 +41,7 @@ class JavaScriptAnalysisCaller(p: SomeProject) {
     def analyze(stmt: JavaStatement, in: JSFact): Set[TaintFact] = {
         val sourceFiles = sourceFinder(stmt)
         in match {
-            case b: BindingFact => sourceFiles.flatMap(s => analyzeScript(s, b))
+            case b: BindingFact         => sourceFiles.flatMap(s => analyzeScript(s, b))
             /* If we don't know what variable is tainted, we have to give up. */
             case b: WildcardBindingFact => Set(b)
         }
@@ -184,7 +184,7 @@ class JavaScriptAnalysisCaller(p: SomeProject) {
      * @return parameter list as string
      */
     private def generateParams(n: Int): String = {
-        (0 until n).map(i => s"p${i}").mkString(", ")
+        (0 until n).map(i => s"p$i").mkString(", ")
     }
 
     /**

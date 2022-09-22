@@ -160,8 +160,7 @@ class JavaScriptAwareTaintProblem(p: SomeProject) extends ForwardTaintProblem(p)
         invokesScriptFunction(method.classFile.thisType, method.name)
 
     /**
-     * If a parameter is tainted, the result will also be tainted.
-     * We assume that the callee does not call the source method.
+     * Kill the flow if we handle the call outside.
      */
     override def outsideAnalysisContext(callee: Method): Option[OutsideAnalysisContextHandler] = {
         if (invokesScriptFunction(callee)) {
@@ -227,16 +226,15 @@ class JavaScriptAwareTaintProblem(p: SomeProject) extends ForwardTaintProblem(p)
                             /* Function name is unknown. We don't know what to call */
                             None
                         else
-                            Some(jsAnalysis.analyze(call, arrIn, fName))
-                    ).filter(_.isDefined).flatMap(_.get) ++ Set(in)
+                            Some(jsAnalysis.analyze(call, arrIn, fName))).filter(_.isDefined).flatMap(_.get) ++ Set(in)
                 /* Call to eval. */
                 case f: BindingFact if callStmt.name == "eval"
-                  && (JavaIFDSProblem.getParameterIndex(allParamsWithIndex, f.index) == -1
-                  || JavaIFDSProblem.getParameterIndex(allParamsWithIndex, f.index) == -3) =>
+                    && (JavaIFDSProblem.getParameterIndex(allParamsWithIndex, f.index) == -1
+                        || JavaIFDSProblem.getParameterIndex(allParamsWithIndex, f.index) == -3) =>
                     jsAnalysis.analyze(call, f)
                 case f: WildcardBindingFact if callStmt.name == "eval"
-                  && (JavaIFDSProblem.getParameterIndex(allParamsWithIndex, f.index) == -1
-                  || JavaIFDSProblem.getParameterIndex(allParamsWithIndex, f.index) == -3) =>
+                    && (JavaIFDSProblem.getParameterIndex(allParamsWithIndex, f.index) == -1
+                        || JavaIFDSProblem.getParameterIndex(allParamsWithIndex, f.index) == -3) =>
                     jsAnalysis.analyze(call, f)
                 /* Put obj in Binding */
                 case Variable(index) if callStmt.name == "put" && JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index) == -3 =>

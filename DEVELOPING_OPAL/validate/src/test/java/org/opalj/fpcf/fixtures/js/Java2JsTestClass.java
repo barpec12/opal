@@ -20,6 +20,19 @@ public class Java2JsTestClass {
         sink(fromJS);
     }
 
+    @ForwardFlowPath({})
+    public static void jsOverwritesBinding() throws ScriptException
+    {
+        ScriptEngineManager sem = new ScriptEngineManager();
+        ScriptEngine se = sem.getEngineByName("JavaScript");
+        String pw = source();
+
+        se.put("secret", pw);
+        se.eval("secret = \"42\";");
+        String fromJS = (String) se.get("secret");
+        sink(fromJS);
+    }
+
     @ForwardFlowPath({"flowInsideJS"})
     public static void flowInsideJS() throws ScriptException
     {
@@ -33,16 +46,31 @@ public class Java2JsTestClass {
         sink(fromJS);
     }
 
-    @ForwardFlowPath({})
-    public static void jsOverwritesBinding() throws ScriptException
+    @ForwardFlowPath({"flowInsideJS2"})
+    public static void flowInsideJS2() throws ScriptException
     {
         ScriptEngineManager sem = new ScriptEngineManager();
         ScriptEngine se = sem.getEngineByName("JavaScript");
         String pw = source();
 
         se.put("secret", pw);
-        se.eval("secret = \"42\";");
-        String fromJS = (String) se.get("secret");
+        se.eval("var xxx = secret;" +
+                "var yyy = xxx;");
+        String fromJS = (String) se.get("yyy");
+        sink(fromJS);
+    }
+
+    @ForwardFlowPath({})
+    public static void flowInsideJSLateOverwrite() throws ScriptException
+    {
+        ScriptEngineManager sem = new ScriptEngineManager();
+        ScriptEngine se = sem.getEngineByName("JavaScript");
+        String pw = source();
+
+        se.put("secret", pw);
+        se.eval("var xxx = secret;" +
+                "var xxx = 42;");
+        String fromJS = (String) se.get("yyy");
         sink(fromJS);
     }
 

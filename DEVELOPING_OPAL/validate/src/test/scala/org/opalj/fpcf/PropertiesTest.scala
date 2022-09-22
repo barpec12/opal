@@ -7,7 +7,7 @@ import java.net.URL
 import com.typesafe.config.Config
 import com.typesafe.config.ConfigValueFactory
 import org.opalj.bi.reader.ClassFileReader
-import org.opalj.bytecode.{JRELibraryFolder, RTJar}
+import org.opalj.bytecode.RTJar
 import org.scalatest.funspec.AnyFunSpec
 import org.scalatest.matchers.should.Matchers
 import org.opalj.log.LogContext

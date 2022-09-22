@@ -12,8 +12,12 @@ import org.opalj.tac.fpcf.analyses.ifds.taint.{ArrayElement, FlowFact, ForwardTa
 import org.opalj.value.ValueInformation
 
 import scala.annotation.nowarn
-import scala.collection.mutable
 
+/**
+ * Java IFDS analysis that is able to resolve calls to JavaScript.
+ *
+ * @param p project
+ */
 class JavaScriptAwareTaintProblem(p: SomeProject) extends ForwardTaintProblem(p) {
     final type TACAICode = TACode[TACMethodParameter, JavaIFDSProblem.V]
     val tacaiKey: Method => AITACode[TACMethodParameter, ValueInformation] = p.get(ComputeTACAIKey)
@@ -121,6 +125,11 @@ class JavaScriptAwareTaintProblem(p: SomeProject) extends ForwardTaintProblem(p)
         }
     }
 
+    /**
+     * Kills the flow.
+     *
+     * @return empty set
+     */
     def killFlow(
         @nowarn call:            JavaStatement,
         @nowarn successor:       JavaStatement,
@@ -174,6 +183,23 @@ class JavaScriptAwareTaintProblem(p: SomeProject) extends ForwardTaintProblem(p)
         sites.map(site => taCode.stmts.apply(site))
     }
 
+    /**
+     * Returns all possible constant strings. Contains the empty string if at least one was non-constant.
+     *
+     * @param method method
+     * @param defSites def sites of the queried variable
+     * @return
+     */
+    private def getPossibleStrings(method: Method, defSites: IntTrieSet): Set[String] = {
+        val taCode = tacaiKey(method)
+
+        defSites.map(site => taCode.stmts.apply(site)).map {
+            case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst =>
+                a.expr.asStringConst.value
+            case _ => ""
+        }
+    }
+
     val jsAnalysis = new JavaScriptAnalysisCaller(p)
 
     override def callToReturnFlow(call: JavaStatement, in: TaintFact, successor: JavaStatement): Set[TaintFact] = {
@@ -185,89 +211,76 @@ class JavaScriptAwareTaintProblem(p: SomeProject) extends ForwardTaintProblem(p)
             in match {
                 case BindingFact(index, _) =>
                     if (JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index) == NO_MATCH)
-                        return Set(in)
+                        Set(in)
                     else
-                        return Set()
-                case _ => return super.callToReturnFlow(call, in, successor)
+                        Set()
+                case _ => super.callToReturnFlow(call, in, successor)
+            }
+        } else {
+            in match {
+                /* Call to invokeFunction. The variable length parameter list is an array in TACAI. */
+                case arrIn: ArrayElement if callStmt.name == "invokeFunction"
+                    && JavaIFDSProblem.getParameterIndex(allParamsWithIndex, arrIn.index) == -3 =>
+                    val fNames = getPossibleStrings(call.method, allParams(1).asVar.definedBy)
+                    fNames.map(fName =>
+                        if (fName == "")
+                            /* Function name is unknown. We don't know what to call */
+                            None
+                        else
+                            Some(jsAnalysis.analyze(call, arrIn, fName))
+                    ).filter(_.isDefined).flatMap(_.get) ++ Set(in)
+                /* Call to eval. */
+                case f: BindingFact if callStmt.name == "eval"
+                  && (JavaIFDSProblem.getParameterIndex(allParamsWithIndex, f.index) == -1
+                  || JavaIFDSProblem.getParameterIndex(allParamsWithIndex, f.index) == -3) =>
+                    jsAnalysis.analyze(call, f)
+                case f: WildcardBindingFact if callStmt.name == "eval"
+                  && (JavaIFDSProblem.getParameterIndex(allParamsWithIndex, f.index) == -1
+                  || JavaIFDSProblem.getParameterIndex(allParamsWithIndex, f.index) == -3) =>
+                    jsAnalysis.analyze(call, f)
+                /* Put obj in Binding */
+                case Variable(index) if callStmt.name == "put" && JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index) == -3 =>
+                    val keyNames = getPossibleStrings(call.method, allParams(1).asVar.definedBy)
+                    val defSites = callStmt.receiverOption.get.asVar.definedBy
+                    keyNames.flatMap(keyName => defSites.map(i => if (keyName == "") WildcardBindingFact(i) else BindingFact(i, keyName))) ++ Set(in)
+                /* putAll BindingFact to other BindingFact */
+                case BindingFact(index, keyName) if callStmt.name == "putAll" && JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index) == -2 =>
+                    callStmt.receiverOption.get.asVar.definedBy.map(i => if (keyName == "") WildcardBindingFact(i) else BindingFact(i, keyName)) ++ Set(in)
+                case WildcardBindingFact(index) if callStmt.name == "putAll" && JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index) == -2 =>
+                    callStmt.receiverOption.get.asVar.definedBy.map(i => WildcardBindingFact(i)) ++ Set(in)
+                /* Overwrite BindingFact */
+                case BindingFact(index, keyName) if callStmt.name == "put" && JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index) == -1 =>
+                    val possibleFields = getPossibleStrings(call.method, allParams(1).asVar.definedBy)
+                    if (possibleFields.size == 1 && possibleFields.contains(keyName))
+                        /* Key is definitely overwritten */
+                        Set()
+                    else
+                        Set(in)
+                case WildcardBindingFact(index) if callStmt.name == "put" && JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index) == -1 =>
+                    /* We never overwrite here as we don't know the key */
+                    Set(in)
+                /* Remove BindingFact */
+                case BindingFact(index, keyName) if callStmt.name == "remove" && JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index) == -1 =>
+                    val possibleFields = getPossibleStrings(call.method, allParams(1).asVar.definedBy)
+                    if (possibleFields.size == 1 && possibleFields.contains(keyName))
+                        Set()
+                    else
+                        Set(in)
+                case WildcardBindingFact(index) if callStmt.name == "remove" && JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index) == -1 =>
+                    /* We never kill here as we don't know the key */
+                    Set(in)
+                /* get from BindingFact */
+                case BindingFact(index, keyName) if callStmt.name == "get" && JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index) == -1 =>
+                    val possibleFields = getPossibleStrings(call.method, allParams(1).asVar.definedBy)
+                    if (possibleFields.size == 1 && possibleFields.contains(keyName))
+                        Set(Variable(call.index), in)
+                    else
+                        Set(in)
+                case WildcardBindingFact(index) if callStmt.name == "get" && JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index) == -1 =>
+                    Set(Variable(call.index), in)
+                case _ => Set(in)
             }
         }
-
-        in match {
-            // invokeFunction takes a function name and a variable length argument. This is always an array in TACAI.
-            case arrIn: ArrayElement if callStmt.name == "invokeFunction"
-                && JavaIFDSProblem.getParameterIndex(allParamsWithIndex, arrIn.index) == -3 =>
-                var taints: Set[TaintFact] = Set()
-                searchStmts(call.method, allParams(1).asVar.definedBy).foreach {
-                    case a: Assignment[JavaIFDSProblem.V] if a.expr.isStringConst =>
-                        val fName = a.expr.asStringConst.value
-                        taints ++= jsAnalysis.analyze(call, arrIn, fName)
-                    case _ =>
-                }
-                return taints
-            /* put obj in Binding */
-            case Variable(index) if callStmt.name == "put" && JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index) == -3 =>
-                val taints = mutable.Set(in)
-                searchStmts(call.method, allParams(1).asVar.definedBy).foreach {
-                    case a: Assignment[JavaIFDSProblem.V] =>
-                        val keyName = if (a.expr.isStringConst) a.expr.asStringConst.value else ""
-                        val defSites = callStmt.receiverOption.get.asVar.definedBy
-                        taints ++= defSites.map(i => BindingFact(i, keyName))
-                    case _ =>
-                }
-                return taints.toSet
-            /* putAll BindingFact to other BindingFact */
-            case BindingFact(index, keyName) if callStmt.name == "putAll" && JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index) == -2 =>
-                callStmt.receiverOption match {
-                    case Some(baseObj) => return baseObj.asVar.definedBy.map(i => BindingFact(i, keyName)) ++ Set(in)
-                    case None          => return Set(in)
-                }
-            /* Overwrite BindingFact */
-            case BindingFact(index, keyName) if callStmt.name == "put" && JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index) == -1 =>
-                if (keyName == "")
-                    return Set(in)
-                val possibleFields = mutable.Set[String]()
-                searchStmts(call.method, allParams(1).asVar.definedBy).foreach {
-                    case a: Assignment[JavaIFDSProblem.V] =>
-                        possibleFields.add(if (a.expr.isStringConst) a.expr.asStringConst.value else "")
-                    case _ =>
-                }
-                if (possibleFields.size == 1 && possibleFields.contains(keyName))
-                    return Set()
-                else
-                    return Set(in)
-            /* Remove BindingFact */
-            case BindingFact(index, keyName) if callStmt.name == "remove" && JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index) == -1 =>
-                if (keyName == "")
-                    return Set(in)
-                val possibleFields = mutable.Set[String]()
-                searchStmts(call.method, allParams(1).asVar.definedBy).foreach {
-                    case a: Assignment[JavaIFDSProblem.V] =>
-                        possibleFields.add(if (a.expr.isStringConst) a.expr.asStringConst.value else "")
-                    case _ =>
-                }
-                if (possibleFields.size == 1 && possibleFields.contains(keyName))
-                    return Set()
-                else
-                    return Set(in)
-            /* get from BindingFact */
-            case BindingFact(index, keyName) if callStmt.name == "get" && JavaIFDSProblem.getParameterIndex(allParamsWithIndex, index) == -1 =>
-                if (keyName == "")
-                    return Set(Variable(call.index), in)
-                searchStmts(call.method, allParams(1).asVar.definedBy).foreach {
-                    case a: Assignment[JavaIFDSProblem.V] =>
-                        if ((!a.expr.isStringConst || a.expr.asStringConst.value == keyName)
-                            && call.stmt.isAssignment)
-                            return Set(Variable(call.index), in)
-                    case _ =>
-                }
-            case b: BindingFact if callStmt.name == "eval"
-                && (JavaIFDSProblem.getParameterIndex(allParamsWithIndex, b.index) == -1
-                    || JavaIFDSProblem.getParameterIndex(allParamsWithIndex, b.index) == -3) =>
-                return jsAnalysis.analyze(call, b)
-            case _ =>
-        }
-
-        Set(in)
     }
 
     override def isTainted(expression: Expr[V], in: TaintFact): Boolean = {

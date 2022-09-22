@@ -38,13 +38,18 @@ class JavaScriptAnalysisCaller(p: SomeProject) {
      * @param in incoming BindingFact
      * @return set of taints
      */
-    def analyze(stmt: JavaStatement, in: BindingFact): Set[TaintFact] = {
+    def analyze(stmt: JavaStatement, in: JSFact): Set[TaintFact] = {
         val sourceFiles = sourceFinder(stmt)
-        sourceFiles.flatMap(s => analyzeScript(s, in))
+        in match {
+            case b: BindingFact => sourceFiles.flatMap(s => analyzeScript(s, b))
+            /* If we don't know what variable is tainted, we have to give up. */
+            case b: WildcardBindingFact => Set(b)
+        }
     }
 
     /**
      * Analyze a call to a JavaScript function.
+     *
      * @param stmt Java Statement
      * @param in Variable-length parameter array
      * @param fName function name
@@ -111,7 +116,7 @@ class JavaScriptAnalysisCaller(p: SomeProject) {
      * Generate a argument list of length n with one tainted argument.
      *
      * @param n number of arguments
-     * @param taintedIdx index which should be tainted.
+     * @param taintedIdx index which should be tainted
      * @return argument list as string
      */
     private def generateFunctionArgs(n: Int, taintedIdx: Int): String = {

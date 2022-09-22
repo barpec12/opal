@@ -84,20 +84,27 @@ class JavaScriptAnalysisCaller(p: SomeProject) {
      * @param func function symbol
      * @return function node
      */
-    private def getFunctionNode(func: Symbol): FunctionNode = {
-        class fnFinder extends NodeVisitor {
-            var fnResult: FunctionNode = _
+    private def getFunctionNode(func: Symbol): Option[FunctionNode] = {
+        /**
+         * Visitor to find the node of the function in the AST.
+         */
+        class FunctionFinder extends NodeVisitor {
+            var fnResult: Option[FunctionNode] = None
 
             override def visit(node: AstNode): Boolean = {
-                node match {
-                    case fn: FunctionNode =>
-                        fnResult = fn
-                        false
-                    case _ => true
-                }
+                if (fnResult.isEmpty)
+                    node match {
+                        case fn: FunctionNode =>
+                            fnResult = Some(fn)
+                            false
+                        case _ => true
+                    }
+                else
+                    false
             }
         }
-        val fnFinder = new fnFinder()
+
+        val fnFinder = new FunctionFinder()
         func.getContainingTable.visit(fnFinder)
         fnFinder.fnResult
     }
@@ -148,8 +155,8 @@ class JavaScriptAnalysisCaller(p: SomeProject) {
         val fSymbol = sTable.get(fName)
         if (fSymbol.getDeclType != Token.FUNCTION)
             return Set()
-        val fNode: FunctionNode = getFunctionNode(fSymbol)
-        if (fNode == null)
+        val fNode = getFunctionNode(fSymbol)
+        if (fNode.isEmpty)
             return Set()
 
         val nameSet: Set[String] = getTopLevelVariableNames(root)+"opal_tainted_return"
@@ -159,7 +166,7 @@ class JavaScriptAnalysisCaller(p: SomeProject) {
                |}
                |function opal_last_stmt(${generateParams(nameSet.size)}) { }
                |\n""".stripMargin
-        val funcCall = s"var opal_tainted_return = $fName(${generateFunctionArgs(fNode.getParamCount, in.element)});"
+        val funcCall = s"var opal_tainted_return = $fName(${generateFunctionArgs(fNode.get.getParamCount, in.element)});"
         val afterCode = s"""
                  |var opal_fill_arg = 42;
                  |var opal_tainted_arg = opal_source();
@@ -217,6 +224,12 @@ class JavaScriptAnalysisCaller(p: SomeProject) {
         val B: JSCFABuilder = JSCallGraphBuilderUtil.makeScriptCGBuilder(f.getParent, f.getName)
         val CG: CallGraph = B.makeCallGraph(B.getOptions)
 
+        /**
+         * Check basic block for source.
+         *
+         * @param ebb exploded basic block
+         * @return true if ebb contains a source
+         */
         def sources(ebb: BasicBlockInContext[IExplodedBasicBlock]): Boolean = {
             val inst = ebb.getDelegate.getInstruction
             inst match {
@@ -232,6 +245,13 @@ class JavaScriptAnalysisCaller(p: SomeProject) {
 
         var varsAliveAfterJS: List[String] = List()
 
+        /**
+         * Add all tainted variable names to varsAliveAfterJS after the analysis ran.
+         *
+         * @param bb basic block
+         * @param r result set
+         * @param d domain
+         */
         def sinks(bb: BasicBlockInContext[IExplodedBasicBlock], r: IntSet, d: Domain): Void = {
             val inst = bb.getDelegate.getInstruction
             inst match {

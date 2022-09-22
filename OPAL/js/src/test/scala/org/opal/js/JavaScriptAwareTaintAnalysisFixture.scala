@@ -6,7 +6,7 @@ import org.opalj.br.analyses.{DeclaredMethodsKey, ProjectInformationKeys, SomePr
 import org.opalj.br.fpcf.PropertyStoreKey
 import org.opalj.fpcf.{PropertyBounds, PropertyStore}
 import org.opalj.ifds.{IFDSAnalysis, IFDSAnalysisScheduler, IFDSPropertyMetaInformation}
-import org.opalj.js.JavaScriptAwareTaintAnalysis
+import org.opalj.js.JavaScriptAwareTaintProblem
 import org.opalj.tac.cg.TypeProviderKey
 import org.opalj.tac.fpcf.analyses.ifds.taint.{TaintFact, FlowFact, TaintNullFact, Variable}
 import org.opalj.tac.fpcf.analyses.ifds.{JavaMethod, JavaStatement}
@@ -19,9 +19,9 @@ import org.opalj.tac.fpcf.properties.Taint
  * @author Mario Trageser
  */
 class JavaScriptAwareTaintAnalysisFixture(project: SomeProject)
-    extends IFDSAnalysis()(project, new JavaScriptAwareTaintAnalysisProblemFixture(project), Taint)
+    extends IFDSAnalysis()(project, new JavaScriptAwareTaintProblemProblemFixture(project), Taint)
 
-class JavaScriptAwareTaintAnalysisProblemFixture(p: SomeProject) extends JavaScriptAwareTaintAnalysis(p) {
+class JavaScriptAwareTaintProblemProblemFixture(p: SomeProject) extends JavaScriptAwareTaintProblem(p) {
     /* Without, the tests are unbearably slow. */
     override def useSummaries = true
 

@@ -133,9 +133,9 @@ function setX(v) {
 Assume a call to `setX` with a tainted argument. At the end of the execution, `x` should be tainted. But in the WALA IFDS analysis, this is not the case.
 
 ## 4. Scalability
-When using `invokeFunction` to call JavaScript from Java, the variable parameters are passed as `Object` and the return value is an `Object` as well. In case of primitive arguments or returns, boxing and unboxing is needed. In that case, the analysis needs the JDK to precisely resolve boxings. But the IFDS solver in the current state is too inefficient such that the `JavaScriptAwareIFDSAnalysis` gets slow.
+When using `invokeFunction` to call JavaScript from Java, the variable parameters are passed as `Object` and the return value is an `Object` as well. In case of primitive arguments or returns, boxing and unboxing is needed. In that case, the analysis needs the JDK to precisely resolve boxings. But the IFDS solver in the current state is too inefficient such that the `JavaScriptAwareTaintProblem` gets slow.
 
-I have decided to implement a reader of the summaries from the *StubDroid* paper. Overriding the `useSummaries` field of `ForwardTaintAnalysis` enables the use of those summaries. With those, there is also no need to load the JDK, which further brings the analysis up to speed.
+I have decided to implement a reader of the summaries from the *StubDroid* paper. Overriding the `useSummaries` field of `ForwardTaintProblem` enables the use of those summaries. With those, there is also no need to load the JDK, which further brings the analysis up to speed.
 > S. Arzt and E. Bodden, "StubDroid: Automatic Inference of Precise Data-Flow Summaries for the Android Framework," 2016 IEEE/ACM 38th International Conference on Software Engineering (ICSE), 2016, pp. 725-735, doi: 10.1145/2884781.2884816.
 
 

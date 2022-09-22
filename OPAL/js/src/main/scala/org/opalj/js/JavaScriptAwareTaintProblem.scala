@@ -14,7 +14,7 @@ import org.opalj.value.ValueInformation
 import scala.annotation.nowarn
 import scala.collection.mutable
 
-class JavaScriptAwareTaintAnalysis(p: SomeProject) extends ForwardTaintProblem(p) {
+class JavaScriptAwareTaintProblem(p: SomeProject) extends ForwardTaintProblem(p) {
     final type TACAICode = TACode[TACMethodParameter, JavaIFDSProblem.V]
     val tacaiKey: Method => AITACode[TACMethodParameter, ValueInformation] = p.get(ComputeTACAIKey)
 

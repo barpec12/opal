@@ -51,17 +51,12 @@ abstract class ForwardTaintProblem(project: SomeProject)
                 if (isTainted(put.value, in)) {
                     // RHS is tainted, thus the lhs as well
                     Set(in) ++ definedBy.map { InstanceField(_, put.declaringClass, put.name) }
-                } else in match {
-                    /* For anyone wondering why I ignored the index, take a look at the instanceCalleeOverwritesTaint()
-                       test case. Basically, if the argument is the same as the base object, the same field is duplicated
-                       as two facts inside the callee, but the defSite is only the parameter. If we would take the index
-                       into account, there would be a false positive. */
-                    case field: InstanceField if in == InstanceField(field.index, put.declaringClass, put.name) =>
-                        // If LHS is equal to the instance field tainted, untaint the field here
-                        Set.empty
-                    case _ =>
-                        // if the taint is not affected, just leave it alive
-                        Set(in)
+                } else if (isTainted(put.objRef, in)) {
+                    // the lhs is tainted and overwritten
+                    Set()
+                } else {
+                    // if the taint is not affected, just leave it alive
+                    Set(in)
                 }
             case PutStatic.ASTID =>
                 val put = statement.stmt.asPutStatic

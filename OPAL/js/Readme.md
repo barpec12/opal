@@ -60,6 +60,13 @@ The semantics of `eval` and `invokeFunction` can be modelled by transforming the
 
 We do exploit that the entry and exit points of JavaScript script are easy to find out: The script is executed from top to bottom. Thus, we do perform the transformation on the source code directly.
 
+We do inject four symbols that may not be already in the script: `opal_source`, `opal_last_stmt`, `opal_fill_arg` and `opal_tainted_arg`. We assume that is the case, there is no check for this.
+
+* `opal_source` is a function that has no parameters and returns a value. This function shall be marked as a source in the JavaScript analysis.
+* `opal_last_stmt` is a function with n parameters where n is the number of variables visible in the top-level scope.
+* `opal_fill_arg` is an untainted variable used to generate valid function calls.
+* `opal_tainted_arg` is a tainted variable used to generate valid function calls.
+
 ```javascript
 // Begin of OPAL generated code
 function opal_source() {
@@ -76,7 +83,7 @@ var xxx = secret;
 opal_last_stmt(secret, xxx);
 // End of OPAL generated code
 ```
-Above is the generated code for a simple example where `secret` is handed over from the environment inside a `ScriptEngine`. Before the actual script, `secret` is tainted. After the script, opal_last_stmt takes all variable names as arguments. For each tainted argument, WALA is queried for the variable name and converted back to a `BindingFact`.
+Above is the generated code for a simple example where `secret` is handed over from the environment inside a `ScriptEngine`. Before the actual script, `secret` is declared in the top-level scope and tainted. After the script, `opal_last_stmt` takes all variable names as arguments. For each tainted argument, WALA is queried for the variable name and converted back to a `BindingFact`.
 
 One might ask why we need to pass all variables in scope as arguments. Take a look at the following JavaScript snippet:
 ```javascript
@@ -111,7 +118,7 @@ var opal_tainted_return = check(opal_fill_arg, opal_tainted_arg);
 opal_last_stmt(opal_tainted_return);
 // End of OPAL generated code
 ```
-Above is another example of a transformation, but this time for tainted arguments to `invokeFunction`. Here, we first generate two variables, one tainted and one untainted. These are used to generate a valid call to the function that is invoked by `invokeFunction`. The return value is always named `opal_tainted_return` and also flows at the end into `opal_last_stmt`. Back in Java, when converting the variable names back to facts, the variable name `opal_tainted_return` indicates the special case that instead of a `BindingFact`, the return value should be tainted.
+Above is another example of a transformation, but this time for tainted arguments to `invokeFunction`. Here, we first generate the two variables, one tainted and one untainted. These are used to generate a valid call to the function that is invoked by `invokeFunction`. The return value is always named `opal_tainted_return` and also flows at the end into `opal_last_stmt`. Back in Java, when converting the variable names back to facts, the variable name `opal_tainted_return` indicates the special case that instead of a `BindingFact`, the return value should be tainted.
 
 ### Limitations
 In theory, if there are too many variables in the top-level scope, the number of arguments in `opal_last_stmt` could reach the maximum number of arguments of the Rhino JavaScript engine, which WALA uses. The limit seems to be in the thousands, so that should never accidentally happen in practise. 
@@ -126,12 +133,14 @@ function setX(v) {
 Assume a call to `setX` with a tainted argument. At the end of the execution, `x` should be tainted. But in the WALA IFDS analysis, this is not the case.
 
 ## 4. Scalability
-This component does implement a subset of the StubDroid paper
+When using `invokeFunction` to call JavaScript from Java, the variable parameters are passed as `Object` and the return value is an `Object` as well. In case of primitive arguments or returns, boxing and unboxing is needed. In that case, the analysis needs the JDK to precisely resolve boxings. But the IFDS solver in the current state is too inefficient such that the `JavaScriptAwareIFDSAnalysis` gets slow.
 
-S. Arzt and E. Bodden, "StubDroid: Automatic Inference of Precise Data-Flow Summaries for the Android Framework," 2016 IEEE/ACM 38th International Conference on Software Engineering (ICSE), 2016, pp. 725-735, doi: 10.1145/2884781.2884816.
+I have decided to implement a reader of the summaries from the *StubDroid* paper. Overriding the `useSummaries` field of `ForwardTaintAnalysis` enables the use of those summaries. With those, there is also no need to load the JDK, which further brings the analysis up to speed.
+> S. Arzt and E. Bodden, "StubDroid: Automatic Inference of Precise Data-Flow Summaries for the Android Framework," 2016 IEEE/ACM 38th International Conference on Software Engineering (ICSE), 2016, pp. 725-735, doi: 10.1145/2884781.2884816.
 
 
 ## Things left open
 * While the `LocalJSSourceFinder` is able to find filenames, I did not implement a way to find these files in the filesystem. Thus, the `JavaScriptAnalysisCaller` ignores `JavaScriptFileSource`.
 * In various places, the analysis depends on finding a string constant. Plugging in a string analysis before running the JavaScript aware taint analysis might greatly improve the accuracy.
 * Pooling of JavaScript analysis calls. Currently, for each taint that gets handed over to the JavaScript, a new analysis run is started. We could save the overhead of constructing a JavaScript AST and exploded supergraph everytime by pooling all taints and only calling the JavaScript analysis when the worklist of the Java IFDS solver is empty.
+* Another optimization could be inside the IFDS solver: implementing unbalanced returns and only propagate zero-facts at sources.
